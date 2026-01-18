@@ -736,9 +736,9 @@ createApp({
         ]);
 
         const combSecurityOptions = ref([
-            { title: 'Нет', value: 'Нет' },
-            { title: '20 фут', value: '20 фут' },
-            { title: '40 фут', value: '40 фут' }
+            { title: 'Нет', value: 'no' },
+            { title: '20 фут', value: '20' },
+            { title: '40 фут', value: '40' }
         ]);
 
         const ownershipOptions = ref([
@@ -781,8 +781,8 @@ createApp({
             { title: 'Тип контейнера', key: 'comb_coc', sortable: true },
             { title: 'Собственность контейнера', key: 'comb_container_ownership', sortable: true },
             { title: 'Охрана', key: 'comb_security', sortable: true },
-            { title: 'Стоимость обычного груза, USD/RUB', key: 'cost_total_normal', sortable: true },
-            { title: 'Стоимость опасного груза, USD/RUB', key: 'cost_total_danger', sortable: true },
+            { title: 'Стоимость обычного груза, USD/RUB', key: 'cost_total_normal_text', sortable: true },
+            { title: 'Стоимость опасного груза, USD/RUB', key: 'cost_total_danger_text', sortable: true },
             { title: 'Агент', key: 'comb_agent', sortable: true },
             { title: 'Комментарий', key: 'comb_remark', sortable: true }
         ]);
@@ -1348,7 +1348,6 @@ const calculateCombined = async () => {
     if (!canCalculateCombined.value) return;
     
     showLoading('Расчет комбинированного маршрута...');
-    console.log(combForm.value.destination);
     try {
         const payload = {
             comb_sea_pol: combForm.value.seaPol,
@@ -1378,21 +1377,21 @@ const calculateCombined = async () => {
 
         // Применяем фильтрацию на клиенте
         let filteredResults = Array.isArray(data) ? data : [];
-        
+        console.log(combForm.value.transshipmentPort);
         // Если выбран порт перевалки, получаем соответствующие станции отправления
         if (combForm.value.transshipmentPort) {
             // Находим все записи комбинированных перевозок для выбранного порта перевалки
-            const transshipmentRecords = combPerevozki.filter(item => 
-                item.PUNKT_OTPRAVLENIYA === combForm.value.transshipmentPort
+            filteredResults = filteredResults.filter(item => 
+                item.comb_transshipment_port === combForm.value.transshipmentPort
             );
-            
+            console.log(filteredResults);
             // Получаем уникальные станции отправления (POL) для выбранного порта перевалки
             const departureStations = [...new Set(
-                transshipmentRecords.map(item => item.POL)
+                filteredResults.map(item => item.POL)
             )];
             
             console.log('Станции отправления для порта перевалки:', departureStations);
-            
+            /*
             // Фильтруем результаты по станциям отправления
             filteredResults = filteredResults.filter(item => {
                 // Получаем морской порт прибытия из результата
@@ -1400,7 +1399,7 @@ const calculateCombined = async () => {
                 
                 // Проверяем, есть ли этот порт в списке станций отправления
                 return departureStations.includes(seaPod);
-            });
+            });*/
         }
         
 /*

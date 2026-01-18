@@ -787,15 +787,7 @@ public function getSeaPerevozki() {
                 }
             }
         }
-        
-        // Если не нашли данные
-        if (empty($result)) {
-            $result = [
-                'error' => true,
-                'message' => 'Не найдены данные для указанных параметров'
-            ];
-        }
-            
+
     } catch (\Exception $e) {
         file_put_contents(__DIR__ . '/error.log', date('c') . " (getSeaPerevozki) " . $e->getMessage() . "\n", FILE_APPEND|LOCK_EX);
         $result = [
@@ -996,10 +988,12 @@ public function getRailPerevozki() {
             // Стоимость для опасного груза
             switch ($containerType) {
                 case '20DC (<24t)':
+                case '20DC':
                     return ceil(floatval($data['OPASNYY_20DC_24'] ?? 0));
                 case '20DC (24t-28t)':
                     return ceil(floatval($data['OPASNYY_DC20_24T_28T'] ?? 0));
                 case '40HC (28t)':
+                case '40HC':
                     return ceil(floatval($data['OPASNYY_HC40_28T'] ?? 0));
                 default:
                     return 0;
@@ -1008,10 +1002,12 @@ public function getRailPerevozki() {
             // Базовая стоимость для обычного груза
             switch ($containerType) {
                 case '20DC (<24t)':
+                case '20DC':
                     return ceil(floatval($data['DC20_24'] ?? 0));
                 case '20DC (24t-28t)':
                     return ceil(floatval($data['DC20_24T_28T'] ?? 0));
                 case '40HC (28t)':
+                case '40HC':
                     return ceil(floatval($data['HC40_28T'] ?? 0));
                 default:
                     return 0;
@@ -1169,7 +1165,10 @@ public function getCombPerevozki() {
         $seaPerevozki = self::fetchTransportData(
             28, 
             self::SEA_TRANSPORT_MAP,
-            ['=NAME' => $seaPol]
+            [
+                '=NAME' => $seaPol,
+                '=PROPERTY_132' => $params['comb_drop_off'],
+            ]
         );
         
         if (empty($seaPerevozki)) {
@@ -1180,11 +1179,15 @@ public function getCombPerevozki() {
             return;
         }
         
+        $combFilter['=PROPERTY_186'] = $combDestPoint;
+        if (!empty($params['comb_transshipment_port'])) {
+            $combFilter['=PROPERTY_182'] = $params['comb_transshipment_port'];
+        }
         // Получаем все комбинированные перевозки для выбранного пункта назначения
         $combPerevozki = self::fetchTransportData(
             32,
             self::COMB_TRANSPORT_MAP,
-            ['=PROPERTY_186' => $combDestPoint] // Фильтр по пункту назначения
+            $combFilter
         );
         
         if (empty($combPerevozki)) {
@@ -1206,195 +1209,58 @@ public function getCombPerevozki() {
             return;
         }
         
-        // Получаем все ж/д перевозки для найденных станций отправления
-        $zhdPerevozki = [];
-        foreach ($departureStations as $station) {
-            $stationRailData = self::fetchTransportData(
-                30, 
-                self::ZHD_TRANSPORT_MAP,
-                ['=NAME' => $station]
-            );
-            
-            if (!empty($stationRailData)) {
-                $zhdPerevozki = array_merge($zhdPerevozki, $stationRailData);
-            }
-        }
-        
-        if (empty($zhdPerevozki)) {
-            echo json_encode([
-                'error' => true,
-                'message' => 'Не найдены ж/д перевозки для станций: ' . implode(', ', $departureStations)
-            ], JSON_UNESCAPED_UNICODE);
-            return;
-        }
-        
         // Параметры расчета
         $cocType = $params['comb_coc'] ?? '';
         $isHazard = ($params['comb_hazard'] ?? 'no') === 'yes';
         $security = $params['comb_security'] ?? 'no';
+        $profit = floatval($params['comb_profit'] ?? 0); // Добавляем параметр прибыли
         $containerOwnership = $params['comb_container_ownership'] ?? 'no';
-        
-        // Определяем тип контейнера для морской части
-        $is40HC = ($cocType === '40HC (28t)');
-        
+
         // Для каждой найденной морской перевозки
         foreach ($seaPerevozki as $seaValue) {
-            // Для каждой найденной ж/д перевозки
-            foreach ($zhdPerevozki as $railValue) {
-                // Если собственность контейнера не выбрана ('no') - показываем оба варианта в ОТДЕЛЬНЫХ РЯДАХ
-                if ($containerOwnership === 'no') {
-                    // ===== РЯД ДЛЯ COC =====
-                    
-                    // Получаем стоимости для COC
-                    $cocCost = $is40HC ? ceil(floatval($seaValue['COC_40HC'] ?? 0)) : ceil(floatval($seaValue['COC_20GP'] ?? 0));
-                    $cocCostDanger = $is40HC ? ceil(floatval($seaValue['OPASNYY_40HC'] ?? 0)) : ceil(floatval($seaValue['OPASNYY_20DC'] ?? 0));
-                    
-                    // DROP OFF стоимости
-                    $dropOffCost = $is40HC ? ceil(floatval($seaValue['DROP_OFF_40HC'] ?? 0)) : ceil(floatval($seaValue['DROP_OFF_20GP'] ?? 0));
-                    
-                    // Стоимость охраны для морской части
-                    $securityCostSea = 0;
-                    if ($security === '20' && !$is40HC) {
-                        $securityCostSea = ceil(floatval($seaValue['OKHRANA_20_FUT'] ?? 0));
-                    } elseif ($security === '40' && $is40HC) {
-                        $securityCostSea = ceil(floatval($seaValue['OKHRANA_40_FUT'] ?? 0));
+            // Для каждой комбинированной перевозки
+            foreach ($combPerevozki as $combValue) {
+                $railStartStation = $combValue['STANTSIYA_OTPRAVLENIYA'] ?? '';
+                $railDestStation = $combValue['STANTSIYA_NAZNACHENIYA'] ?? '';
+                
+                if (empty($railStartStation) || empty($railDestStation)) {
+                    continue;
+                }
+                
+                // Получаем ж/д перевозки для станции отправления
+                $railData = self::fetchTransportData(
+                    30, 
+                    self::ZHD_TRANSPORT_MAP,
+                    [
+                        '=NAME' => $railStartStation, // STANTSIYA_OTPRAVLENIYA = NAME
+                    ]
+                );
+                
+                // Фильтруем по станции назначения (POD должна совпадать со STANTSIYA_NAZNACHENIYA)
+                $filteredRailData = [];
+                foreach ($railData as $railItem) {
+                    if (($railItem['POD'] ?? '') === $railDestStation) {
+                        $filteredRailData[] = $railItem;
                     }
-                    
-                    // CAF процент
-                    $cafPercent = floatval($seaValue['CAF_KONVERT'] ?? 0);
-                    
-                    // Расчет для обычного груза COC
-                    $cocNetto = ceil($dropOffCost + $cocCost);
-                    $costSeaCocNormal = ceil(($dropOffCost + $cocNetto) * (1 + $cafPercent / 100) + $securityCostSea);
-                    
-                    // Расчет для опасного груза COC
-                    $cocNettoDanger = ceil($dropOffCost + $cocCostDanger);
-                    $costSeaCocDanger = ceil(($dropOffCost + $cocNettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
-                    
-                    // Ж/Д часть для COC
-                    $railCostNormal = $this->getRailCostForContainerType($cocType, $railValue, false);
-                    $railCostDanger = $this->getRailCostForContainerType($cocType, $railValue, true);
-                    
-                    // Стоимость охраны для ЖД части
-                    $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
-                    
-                    $costRailCocNormal = ceil($railCostNormal + $securityCostRail);
-                    $costRailCocDanger = ceil($railCostDanger + $securityCostRail);
-                    
-                    // Общие стоимости для COC
-                    $totalCocNormal = $costSeaCocNormal + $costRailCocNormal;
-                    $totalCocDanger = $costSeaCocDanger + $costRailCocDanger;
-                    
-                    $resultItemCOC = [
-                        'comb_sea_pol' => $seaValue['POL'] ?? '',
-                        'comb_sea_pod' => $seaValue['POD'] ?? '',
-                        'comb_rail_start' => $railValue['POL'] ?? '',
-                        'comb_rail_dest' => $railValue['POD'] ?? '',
-                        'comb_drop_off' => $seaValue['DROP_OFF_LOCATION'] ?? '',
-                        'comb_transshipment_port' => $combDestPoint,
-                        'comb_coc' => $cocType,
-                        'comb_container_ownership' => 'COC',
-                        'comb_hazard' => 'Оба варианта',
-                        'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                        'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
-                        'comb_remark' => $seaValue['REMARK'] ?? '',
-                                        
-                        // Обычный груз
-                        'cost_sea_normal' => $costSeaCocNormal,
-                        'cost_rail_normal' => $costRailCocNormal,
-                        'cost_total_normal' => $costSeaCocNormal . '$ + ' . $costRailCocNormal . ' руб',
+                }
+                
+                if (empty($filteredRailData)) {
+                    continue; // Нет подходящих ж/д маршрутов
+                }
+                
+                // Для каждой подходящей ж/д перевозки
+                foreach ($filteredRailData as $railValue) {
+
+                    // Если собственность контейнера не выбрана ('no') - показываем оба варианта в ОТДЕЛЬНЫХ РЯДАХ
+                    if ($containerOwnership === 'no') {
+                        // ===== РЯД ДЛЯ COC =====
                         
-                        // Опасный груз
-                        'cost_sea_danger' => $costSeaCocDanger,
-                        'cost_rail_danger' => $costRailCocDanger,
-                        'cost_total_danger' => $costSeaCocDanger . '$ + ' . $costRailCocDanger . ' руб',
+                        // Определяем тип контейнера для морской части
+                        $is40HC = ($cocType === '40HC (28t)');
                         
-                        // Детали расчета
-                        'container_cost_normal' => $cocCost,
-                        'container_cost_danger' => $cocCostDanger,
-                        'drop_off_cost' => $dropOffCost,
-                        'caf_percent' => $cafPercent,
-                        'security_cost_sea' => $securityCostSea,
-                        'security_cost_rail' => $securityCostRail,
-                        
-                        'show_both_ownership' => false, // Показываем в отдельных рядах
-                        'show_both_hazard_in_columns' => true
-                    ];
-                    
-                    // ===== РЯД ДЛЯ SOC =====
-                    
-                    // Получаем стоимости для SOC
-                    $socCost = $is40HC ? ceil(floatval($seaValue['SOC_40HC'] ?? 0)) : ceil(floatval($seaValue['SOC_20GP'] ?? 0));
-                    
-                    // Расчет для обычного груза SOC
-                    $socNetto = ceil($dropOffCost + $socCost);
-                    $costSeaSocNormal = ceil(($dropOffCost + $socNetto) * (1 + $cafPercent / 100) + $securityCostSea);
-                    
-                    // Для SOC опасного используем те же стоимости что и для COC опасного
-                    $costSeaSocDanger = $costSeaCocDanger;
-                    
-                    // Ж/Д часть для SOC (используем те же стоимости что и для COC)
-                    $costRailSocNormal = $costRailCocNormal;
-                    $costRailSocDanger = $costRailCocDanger;
-                    
-                    // Общие стоимости для SOC
-                    $totalSocNormal = $costSeaSocNormal + $costRailSocNormal;
-                    $totalSocDanger = $costSeaSocDanger + $costRailSocDanger;
-                    
-                    $resultItemSOC = [
-                        'comb_sea_pol' => $seaValue['POL'] ?? '',
-                        'comb_sea_pod' => $seaValue['POD'] ?? '',
-                        'comb_rail_start' => $railValue['POL'] ?? '',
-                        'comb_rail_dest' => $railValue['POD'] ?? '',
-                        'comb_drop_off' => $seaValue['DROP_OFF_LOCATION'] ?? '',
-                        'comb_transshipment_port' => $combDestPoint,
-                        'comb_coc' => $cocType,
-                        'comb_container_ownership' => 'SOC',
-                        'comb_hazard' => 'Оба варианта',
-                        'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                        'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
-                        'comb_remark' => $seaValue['REMARK'] ?? '',
-                        
-                        // Обычный груз
-                        'cost_sea_normal' => $costSeaSocNormal,
-                        'cost_rail_normal' => $costRailSocNormal,
-                        'cost_total_normal' => $costSeaSocNormal . '$ + ' . $costRailSocNormal . ' руб',
-                        
-                        // Опасный груз
-                        'cost_sea_danger' => $costSeaSocDanger,
-                        'cost_rail_danger' => $costRailSocDanger,
-                        'cost_total_danger' => $costSeaSocDanger . '$ + ' . $costRailSocDanger . ' руб',
-                        
-                        // Детали расчета
-                        'container_cost_normal' => $socCost,
-                        'container_cost_danger' => $cocCostDanger, // Используем стоимость COC опасного
-                        'drop_off_cost' => $dropOffCost,
-                        'caf_percent' => $cafPercent,
-                        'security_cost_sea' => $securityCostSea,
-                        'security_cost_rail' => $securityCostRail,
-                        
-                        'show_both_ownership' => false, // Показываем в отдельных рядах
-                        'show_both_hazard_in_columns' => true
-                    ];
-                    
-                    // Добавляем оба ряда в результат
-                    $result[] = $resultItemCOC;
-                    $result[] = $resultItemSOC;
-                    
-                } else {
-                    // Если выбрана конкретная собственность контейнера
-                    $selectedOwnership = $containerOwnership; // 'coc' или 'soc'
-                    $displayContainerType = $selectedOwnership === 'coc' ? 'COC' : 'SOC';
-                    
-                    if (!$isHazard) {
-                        // Пользователь выбрал обычный груз - показываем оба варианта (обычный и опасный)
-                        
-                        // Получаем стоимости в зависимости от типа собственности
-                        $containerCost = $selectedOwnership === 'soc' 
-                            ? ($is40HC ? ceil(floatval($seaValue['SOC_40HC'] ?? 0)) : ceil(floatval($seaValue['SOC_20GP'] ?? 0)))
-                            : ($is40HC ? ceil(floatval($seaValue['COC_40HC'] ?? 0)) : ceil(floatval($seaValue['COC_20GP'] ?? 0)));
-                        
-                        $containerCostDanger = $is40HC ? ceil(floatval($seaValue['OPASNYY_40HC'] ?? 0)) : ceil(floatval($seaValue['OPASNYY_20DC'] ?? 0));
+                        // Получаем стоимости для COC
+                        $cocCost = $is40HC ? ceil(floatval($seaValue['COC_40HC'] ?? 0)) : ceil(floatval($seaValue['COC_20GP'] ?? 0));
+                        $cocCostDanger = $is40HC ? ceil(floatval($seaValue['OPASNYY_40HC'] ?? 0)) : ceil(floatval($seaValue['OPASNYY_20DC'] ?? 0));
                         
                         // DROP OFF стоимости
                         $dropOffCost = $is40HC ? ceil(floatval($seaValue['DROP_OFF_40HC'] ?? 0)) : ceil(floatval($seaValue['DROP_OFF_20GP'] ?? 0));
@@ -1410,134 +1276,340 @@ public function getCombPerevozki() {
                         // CAF процент
                         $cafPercent = floatval($seaValue['CAF_KONVERT'] ?? 0);
                         
-                        // Расчет для обычного груза
-                        $netto = ceil($dropOffCost + $containerCost);
-                        $costSeaNormal = ceil(($dropOffCost + $netto) * (1 + $cafPercent / 100) + $securityCostSea);
+                        // Расчет для обычного груза COC
+                        $cocNetto = ceil($dropOffCost + $cocCost);
+                        $costSeaCocNormal = ceil(($dropOffCost + $cocNetto) * (1 + $cafPercent / 100) + $securityCostSea);
                         
-                        // Расчет для опасного груза
-                        $nettoDanger = ceil($dropOffCost + $containerCostDanger);
-                        $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
+                        // Расчет для опасного груза COC
+                        $cocNettoDanger = ceil($dropOffCost + $cocCostDanger);
+                        $costSeaCocDanger = ceil(($dropOffCost + $cocNettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
                         
-                        // Ж/Д часть
+                        // ===== Ж/Д ЧАСТЬ ДЛЯ COC =====
                         $railCostNormal = $this->getRailCostForContainerType($cocType, $railValue, false);
                         $railCostDanger = $this->getRailCostForContainerType($cocType, $railValue, true);
                         
                         // Стоимость охраны для ЖД части
                         $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
                         
-                        $costRailNormal = ceil($railCostNormal + $securityCostRail);
-                        $costRailDanger = ceil($railCostDanger + $securityCostRail);
+                        $costRailCocNormal = ceil($railCostNormal + $securityCostRail + $profit);
+                        $costRailCocDanger = ceil($railCostDanger + $securityCostRail + $profit);
                         
-                        // Общие стоимости
-                        $totalNormal = $costSeaNormal + $costRailNormal;
-                        $totalDanger = $costSeaDanger + $costRailDanger;
+                        // Общие стоимости для COC
+                        $totalCocNormal = $costSeaCocNormal + $costRailCocNormal;
+                        $totalCocDanger = $costSeaCocDanger + $costRailCocDanger;
                         
-                        $resultItem = [
+                        $resultItemCOC = [
                             'comb_sea_pol' => $seaValue['POL'] ?? '',
                             'comb_sea_pod' => $seaValue['POD'] ?? '',
-                            'comb_rail_start' => $railValue['POL'] ?? '',
-                            'comb_rail_dest' => $railValue['POD'] ?? '',
+                            'comb_rail_start' => $railStartStation,
+                            'comb_rail_dest' => $railDestStation,
                             'comb_drop_off' => $seaValue['DROP_OFF_LOCATION'] ?? '',
-                            'comb_transshipment_port' => $combDestPoint,
+                            'comb_transshipment_port' => $combValue['PUNKT_OTPRAVLENIYA'] ?? '',
                             'comb_coc' => $cocType,
-                            'comb_container_ownership' => $displayContainerType,
-                            'comb_hazard' => 'Нет',
+                            'comb_container_ownership' => 'COC',
+                            'comb_hazard' => 'Оба варианта',
                             'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
+                            'comb_profit' => $profit,
                             'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
-                            'comb_remark' => $seaValue['REMARK'] ?? '',
+                            'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
                             
-                            // Обычный груз
-                            'cost_sea_normal' => $costSeaNormal,
-                            'cost_rail_normal' => $costRailNormal,
-                            'cost_total_normal' => $costSeaNormal . '$ + ' . $costRailNormal . ' руб',
+                            // Морская часть - обычный груз
+                            'cost_sea_normal' => $costSeaCocNormal,
+                            'container_cost_normal' => $cocCost,
+                            'drop_off_cost_normal' => $dropOffCost,
+                            'caf_percent_normal' => $cafPercent,
+                            'security_cost_sea_normal' => $securityCostSea,
                             
-                            // Опасный груз
-                            'cost_sea_danger' => $costSeaDanger,
-                            'cost_rail_danger' => $costRailDanger,
-                            'cost_total_danger' => $costSeaDanger . '$ + ' . $costRailDanger . ' руб',
+                            // Морская часть - опасный груз
+                            'cost_sea_danger' => $costSeaCocDanger,
+                            'container_cost_danger' => $cocCostDanger,
+                            'drop_off_cost_danger' => $dropOffCost,
+                            'caf_percent_danger' => $cafPercent,
+                            'security_cost_sea_danger' => $securityCostSea,
                             
-                            // Детали расчета
-                            'container_cost_normal' => $containerCost,
-                            'container_cost_danger' => $containerCostDanger,
-                            'drop_off_cost' => $dropOffCost,
-                            'caf_percent' => $cafPercent,
-                            'security_cost_sea' => $securityCostSea,
-                            'security_cost_rail' => $securityCostRail,
+                            // Ж/Д часть - обычный груз
+                            'cost_rail_normal' => $costRailCocNormal,
+                            'rail_base_cost_normal' => $railCostNormal,
+                            'security_cost_rail_normal' => $securityCostRail,
+                            
+                            // Ж/Д часть - опасный груз
+                            'cost_rail_danger' => $costRailCocDanger,
+                            'rail_base_cost_danger' => $railCostDanger,
+                            'security_cost_rail_danger' => $securityCostRail,
+                            
+                            // Общие стоимости
+                            'cost_total_normal' => $totalCocNormal,
+                            'cost_total_danger' => $totalCocDanger,
+                            'cost_total_normal_text' => $costSeaCocNormal . '$ + ' . $costRailCocNormal . ' руб',
+                            'cost_total_danger_text' => $costSeaCocDanger . '$ + ' . $costRailCocDanger . ' руб',
                             
                             'show_both_ownership' => false,
                             'show_both_hazard_in_columns' => true
                         ];
                         
-                        $result[] = $resultItem;
+                        // ===== РЯД ДЛЯ SOC =====
                         
-                    } else {
-                        // Пользователь выбрал опасный груз - показываем только опасный
+                        // Получаем стоимости для SOC
+                        $socCost = $is40HC ? ceil(floatval($seaValue['SOC_40HC'] ?? 0)) : ceil(floatval($seaValue['SOC_20GP'] ?? 0));
                         
-                        $containerCostDanger = $is40HC ? ceil(floatval($seaValue['OPASNYY_40HC'] ?? 0)) : ceil(floatval($seaValue['OPASNYY_20DC'] ?? 0));
+                        // Расчет для обычного груза SOC
+                        $socNetto = ceil($dropOffCost + $socCost);
+                        $costSeaSocNormal = ceil(($dropOffCost + $socNetto) * (1 + $cafPercent / 100) + $securityCostSea);
                         
-                        // DROP OFF стоимости
-                        $dropOffCost = $is40HC ? ceil(floatval($seaValue['DROP_OFF_40HC'] ?? 0)) : ceil(floatval($seaValue['DROP_OFF_20GP'] ?? 0));
+                        // Для SOC опасного используем те же стоимости что и для COC опасного
+                        $costSeaSocDanger = $costSeaCocDanger;
                         
-                        // Стоимость охраны для морской части
-                        $securityCostSea = 0;
-                        if ($security === '20' && !$is40HC) {
-                            $securityCostSea = ceil(floatval($seaValue['OKHRANA_20_FUT'] ?? 0));
-                        } elseif ($security === '40' && $is40HC) {
-                            $securityCostSea = ceil(floatval($seaValue['OKHRANA_40_FUT'] ?? 0));
-                        }
+                        // Ж/Д часть для SOC (используем те же стоимости что и для COC)
+                        $costRailSocNormal = $costRailCocNormal;
+                        $costRailSocDanger = $costRailCocDanger;
                         
-                        // CAF процент
-                        $cafPercent = floatval($seaValue['CAF_KONVERT'] ?? 0);
+                        // Общие стоимости для SOC
+                        $totalSocNormal = $costSeaSocNormal + $costRailSocNormal;
+                        $totalSocDanger = $costSeaSocDanger + $costRailSocDanger;
                         
-                        // Расчет для опасного груза
-                        $nettoDanger = ceil($dropOffCost + $containerCostDanger);
-                        $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
-                        
-                        // Ж/Д часть для опасного груза
-                        $railCostDanger = $this->getRailCostForContainerType($cocType, $railValue, true);
-                        
-                        // Стоимость охраны для ЖД части
-                        $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
-                        
-                        $costRailDanger = ceil($railCostDanger + $securityCostRail);
-                        
-                        // Общая стоимость
-                        $totalDanger = $costSeaDanger + $costRailDanger;
-                        
-                        $resultItem = [
+                        $resultItemSOC = [
                             'comb_sea_pol' => $seaValue['POL'] ?? '',
                             'comb_sea_pod' => $seaValue['POD'] ?? '',
-                            'comb_rail_start' => $railValue['POL'] ?? '',
-                            'comb_rail_dest' => $railValue['POD'] ?? '',
+                            'comb_rail_start' => $railStartStation,
+                            'comb_rail_dest' => $railDestStation,
                             'comb_drop_off' => $seaValue['DROP_OFF_LOCATION'] ?? '',
-                            'comb_transshipment_port' => $combDestPoint,
+                            'comb_transshipment_port' => $combValue['PUNKT_OTPRAVLENIYA'] ?? '',
                             'comb_coc' => $cocType,
-                            'comb_container_ownership' => $displayContainerType,
-                            'comb_hazard' => 'Да',
+                            'comb_container_ownership' => 'SOC',
+                            'comb_hazard' => 'Оба варианта',
                             'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
+                            'comb_profit' => $profit,
                             'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
-                            'comb_remark' => $seaValue['REMARK'] ?? '',
+                            'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
                             
-                            // Только опасный груз
-                            'cost_sea' => $costSeaDanger,
-                            'cost_rail' => $costRailDanger,
-                            'cost_total' => $costSeaDanger . '$ + ' . $costRailDanger . ' руб',
+                            // Морская часть - обычный груз
+                            'cost_sea_normal' => $costSeaSocNormal,
+                            'container_cost_normal' => $socCost,
+                            'drop_off_cost_normal' => $dropOffCost,
+                            'caf_percent_normal' => $cafPercent,
+                            'security_cost_sea_normal' => $securityCostSea,
                             
-                            // Детали расчета
-                            'container_cost' => $containerCostDanger,
-                            'drop_off_cost' => $dropOffCost,
-                            'caf_percent' => $cafPercent,
-                            'security_cost_sea' => $securityCostSea,
-                            'security_cost_rail' => $securityCostRail,
+                            // Морская часть - опасный груз
+                            'cost_sea_danger' => $costSeaSocDanger,
+                            'container_cost_danger' => $cocCostDanger,
+                            'drop_off_cost_danger' => $dropOffCost,
+                            'caf_percent_danger' => $cafPercent,
+                            'security_cost_sea_danger' => $securityCostSea,
+                            
+                            // Ж/Д часть - обычный груз
+                            'cost_rail_normal' => $costRailSocNormal,
+                            'rail_base_cost_normal' => $railCostNormal,
+                            'security_cost_rail_normal' => $securityCostRail,
+                            
+                            // Ж/Д часть - опасный груз
+                            'cost_rail_danger' => $costRailSocDanger,
+                            'rail_base_cost_danger' => $railCostDanger,
+                            'security_cost_rail_danger' => $securityCostRail,
+                            
+                            // Общие стоимости
+                            'cost_total_normal' => $totalSocNormal,
+                            'cost_total_danger' => $totalSocDanger,
+                            'cost_total_normal_text' => $costSeaSocNormal . '$ + ' . $costRailSocNormal . ' руб',
+                            'cost_total_danger_text' => $costSeaSocDanger . '$ + ' . $costRailSocDanger . ' руб',
                             
                             'show_both_ownership' => false,
-                            'show_both_hazard_in_columns' => false
+                            'show_both_hazard_in_columns' => true
                         ];
                         
-                        $result[] = $resultItem;
+                        // Добавляем оба ряда в результат
+                        $result[] = $resultItemCOC;
+                        $result[] = $resultItemSOC;
+                        
+                    } else {
+                        // Если выбрана конкретная собственность контейнера
+                        $selectedOwnership = $containerOwnership; // 'coc' или 'soc'
+                        $displayContainerType = $selectedOwnership === 'coc' ? 'COC' : 'SOC';
+                        
+                        if (!$isHazard) {
+                            // Пользователь выбрал обычный груз - показываем оба варианта (обычный и опасный)
+                            
+                            // Определяем тип контейнера для морской части
+                            $is40HC = ($cocType === '40HC (28t)');
+                            
+                            // Получаем стоимости в зависимости от типа собственности
+                            $containerCost = $selectedOwnership === 'soc' 
+                                ? ($is40HC ? ceil(floatval($seaValue['SOC_40HC'] ?? 0)) : ceil(floatval($seaValue['SOC_20GP'] ?? 0)))
+                                : ($is40HC ? ceil(floatval($seaValue['COC_40HC'] ?? 0)) : ceil(floatval($seaValue['COC_20GP'] ?? 0)));
+                            
+                            $containerCostDanger = $is40HC ? ceil(floatval($seaValue['OPASNYY_40HC'] ?? 0)) : ceil(floatval($seaValue['OPASNYY_20DC'] ?? 0));
+                            
+                            // DROP OFF стоимости
+                            $dropOffCost = $is40HC ? ceil(floatval($seaValue['DROP_OFF_40HC'] ?? 0)) : ceil(floatval($seaValue['DROP_OFF_20GP'] ?? 0));
+                            
+                            // Стоимость охраны для морской части
+                            $securityCostSea = 0;
+                            if ($security === '20' && !$is40HC) {
+                                $securityCostSea = ceil(floatval($seaValue['OKHRANA_20_FUT'] ?? 0));
+                            } elseif ($security === '40' && $is40HC) {
+                                $securityCostSea = ceil(floatval($seaValue['OKHRANA_40_FUT'] ?? 0));
+                            }
+                            
+                            // CAF процент
+                            $cafPercent = floatval($seaValue['CAF_KONVERT'] ?? 0);
+                            
+                            // Расчет для обычного груза
+                            $netto = ceil($dropOffCost + $containerCost);
+                            $costSeaNormal = ceil(($dropOffCost + $netto) * (1 + $cafPercent / 100) + $securityCostSea);
+                            
+                            // Расчет для опасного груза
+                            $nettoDanger = ceil($dropOffCost + $containerCostDanger);
+                            $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
+                            
+                            // ===== Ж/Д ЧАСТЬ =====
+                            $railCostNormal = $this->getRailCostForContainerType($cocType, $railValue, false);
+                            $railCostDanger = $this->getRailCostForContainerType($cocType, $railValue, true);
+                            
+                            // Стоимость охраны для ЖД части
+                            $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
+                            
+                            $costRailNormal = ceil($railCostNormal + $securityCostRail + $profit);
+                            $costRailDanger = ceil($railCostDanger + $securityCostRail + $profit);
+                            
+                            // Общие стоимости
+                            $totalNormal = $costSeaNormal + $costRailNormal;
+                            $totalDanger = $costSeaDanger + $costRailDanger;
+                            
+                            $resultItem = [
+                                'comb_sea_pol' => $seaValue['POL'] ?? '',
+                                'comb_sea_pod' => $seaValue['POD'] ?? '',
+                                'comb_rail_start' => $railStartStation,
+                                'comb_rail_dest' => $railDestStation,
+                                'comb_drop_off' => $seaValue['DROP_OFF_LOCATION'] ?? '',
+                                'comb_transshipment_port' => $combValue['PUNKT_OTPRAVLENIYA'] ?? '',
+                                'comb_coc' => $cocType,
+                                'comb_container_ownership' => $displayContainerType,
+                                'comb_hazard' => 'Нет',
+                                'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
+                                'comb_profit' => $profit,
+                                'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
+                                'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
+                                
+                                // Морская часть - обычный груз
+                                'cost_sea_normal' => $costSeaNormal,
+                                'container_cost_normal' => $containerCost,
+                                'drop_off_cost_normal' => $dropOffCost,
+                                'caf_percent_normal' => $cafPercent,
+                                'security_cost_sea_normal' => $securityCostSea,
+                                
+                                // Морская часть - опасный груз
+                                'cost_sea_danger' => $costSeaDanger,
+                                'container_cost_danger' => $containerCostDanger,
+                                'drop_off_cost_danger' => $dropOffCost,
+                                'caf_percent_danger' => $cafPercent,
+                                'security_cost_sea_danger' => $securityCostSea,
+                                
+                                // Ж/Д часть - обычный груз
+                                'cost_rail_normal' => $costRailNormal,
+                                'rail_base_cost_normal' => $railCostNormal,
+                                'security_cost_rail_normal' => $securityCostRail,
+                                
+                                // Ж/Д часть - опасный груз
+                                'cost_rail_danger' => $costRailDanger,
+                                'rail_base_cost_danger' => $railCostDanger,
+                                'security_cost_rail_danger' => $securityCostRail,
+                                
+                                // Общие стоимости
+                                'cost_total_normal' => $totalNormal,
+                                'cost_total_danger' => $totalDanger,
+                                'cost_total_normal_text' => $costSeaNormal . '$ + ' . $costRailNormal . ' руб',
+                                'cost_total_danger_text' => $costSeaDanger . '$ + ' . $costRailDanger . ' руб',
+                                
+                                'show_both_ownership' => false,
+                                'show_both_hazard_in_columns' => true
+                            ];
+                            
+                            $result[] = $resultItem;
+                            
+                        } else {
+                            // Пользователь выбрал опасный груз - показываем только опасный
+                            
+                            // Определяем тип контейнера для морской части
+                            $is40HC = ($cocType === '40HC (28t)');
+                            
+                            $containerCostDanger = $is40HC ? ceil(floatval($seaValue['OPASNYY_40HC'] ?? 0)) : ceil(floatval($seaValue['OPASNYY_20DC'] ?? 0));
+                            
+                            // DROP OFF стоимости
+                            $dropOffCost = $is40HC ? ceil(floatval($seaValue['DROP_OFF_40HC'] ?? 0)) : ceil(floatval($seaValue['DROP_OFF_20GP'] ?? 0));
+                            
+                            // Стоимость охраны для морской части
+                            $securityCostSea = 0;
+                            if ($security === '20' && !$is40HC) {
+                                $securityCostSea = ceil(floatval($seaValue['OKHRANA_20_FUT'] ?? 0));
+                            } elseif ($security === '40' && $is40HC) {
+                                $securityCostSea = ceil(floatval($seaValue['OKHRANA_40_FUT'] ?? 0));
+                            }
+                            
+                            // CAF процент
+                            $cafPercent = floatval($seaValue['CAF_KONVERT'] ?? 0);
+                            
+                            // Расчет для опасного груза
+                            $nettoDanger = ceil($dropOffCost + $containerCostDanger);
+                            $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
+                            
+                            // ===== Ж/Д ЧАСТЬ ДЛЯ ОПАСНОГО ГРУЗА =====
+                            $railCostDanger = $this->getRailCostForContainerType($cocType, $railValue, true);
+                            
+                            // Стоимость охраны для ЖД части
+                            $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
+                            
+                            $costRailDanger = ceil($railCostDanger + $securityCostRail + $profit);
+                            
+                            // Общая стоимость
+                            $totalDanger = $costSeaDanger + $costRailDanger;
+                            
+                            $resultItem = [
+                                'comb_sea_pol' => $seaValue['POL'] ?? '',
+                                'comb_sea_pod' => $seaValue['POD'] ?? '',
+                                'comb_rail_start' => $railStartStation,
+                                'comb_rail_dest' => $railDestStation,
+                                'comb_drop_off' => $seaValue['DROP_OFF_LOCATION'] ?? '',
+                                'comb_transshipment_port' => $combValue['PUNKT_OTPRAVLENIYA'] ?? '',
+                                'comb_coc' => $cocType,
+                                'comb_container_ownership' => $displayContainerType,
+                                'comb_hazard' => 'Да',
+                                'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
+                                'comb_profit' => $profit,
+                                'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
+                                'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
+                                
+                                // Морская часть - опасный груз
+                                'cost_sea' => $costSeaDanger,
+                                'container_cost' => $containerCostDanger,
+                                'drop_off_cost' => $dropOffCost,
+                                'caf_percent' => $cafPercent,
+                                'security_cost_sea' => $securityCostSea,
+                                
+                                // Ж/Д часть - опасный груз
+                                'cost_rail' => $costRailDanger,
+                                'rail_base_cost' => $railCostDanger,
+                                'security_cost_rail' => $securityCostRail,
+                                
+                                // Общая стоимость
+                                'cost_total' => $totalDanger,
+                                'cost_total_text' => $costSeaDanger . '$ + ' . $costRailDanger . ' руб',
+                                
+                                'show_both_ownership' => false,
+                                'show_both_hazard_in_columns' => false
+                            ];
+                            
+                            $result[] = $resultItem;
+                        }
                     }
                 }
             }
+        }
+        
+        // Если не нашли данные
+        if (empty($result)) {
+            $result = [
+                'error' => true,
+                'message' => 'Не найдены данные для указанных параметров'
+            ];
         }
         
     } catch (\Exception $e) {
