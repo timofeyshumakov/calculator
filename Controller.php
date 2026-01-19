@@ -107,51 +107,398 @@ class TransportationCalculatorController
     /**
      * Экспорт результатов морских перевозок в Excel
      */
-    public function exportSeaToExcel()
-    {
-        $data = json_decode(file_get_contents('php://input'), true);
-        
-        if (empty($data) || !is_array($data)) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-            return;
-        }
-        
-        $this->generateExcel($data, 'sea_export_' . date('Y-m-d_H-i-s'));
+/**
+ * Экспорт результатов морских перевозок в Excel
+ */
+public function exportSeaToExcel()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (empty($input) || !is_array($input)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
     }
+    
+    $exportData = $input['export_data'] ?? [];
+    $calculationParams = $input['calculation_params'] ?? [];
+    $exactMatch = $input['exact_match'] ?? false;
+    
+    // Если нужно точное соответствие, пересчитываем данные
+    if ($exactMatch && !empty($calculationParams)) {
+        $_POST = $calculationParams;
+        $result = $this->getSeaPerevozki(true);
+        if (is_string($result)) {
+            $result = json_decode($result, true);
+        }
+        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
+    }
+    
+    if (empty($exportData)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $this->generateSeaExcel($exportData, 'sea_export_' . date('Y-m-d_H-i-s'));
+}
+
+/**
+ * Экспорт результатов ж/д перевозок в Excel
+ */
+public function exportRailToExcel()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (empty($input) || !is_array($input)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $exportData = $input['export_data'] ?? [];
+    $calculationParams = $input['calculation_params'] ?? [];
+    $exactMatch = $input['exact_match'] ?? false;
+    
+    // Если нужно точное соответствие, пересчитываем данные
+    if ($exactMatch && !empty($calculationParams)) {
+        $_POST = $calculationParams;
+        $result = $this->getRailPerevozki(true);
+        if (is_string($result)) {
+            $result = json_decode($result, true);
+        }
+        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
+    }
+    
+    if (empty($exportData)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $this->generateRailExcel($exportData, 'rail_export_' . date('Y-m-d_H-i-s'));
+}
+
+/**
+ * Экспорт результатов комбинированных перевозок в Excel
+ */
+public function exportCombToExcel()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (empty($input) || !is_array($input)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $exportData = $input['export_data'] ?? [];
+    $calculationParams = $input['calculation_params'] ?? [];
+    $exactMatch = $input['exact_match'] ?? false;
+    
+    // Если нужно точное соответствие, пересчитываем данные
+    if ($exactMatch && !empty($calculationParams)) {
+        $_POST = $calculationParams;
+        $result = $this->getCombPerevozki(true);
+        if (is_string($result)) {
+            $result = json_decode($result, true);
+        }
+        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
+    }
+    
+    if (empty($exportData)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $this->generateCombExcel($exportData, 'combined_export_' . date('Y-m-d_H-i-s'));
+}
     
     /**
      * Экспорт результатов ж/д перевозок в Excel
      */
-    public function exportRailToExcel()
-    {
-        $data = json_decode(file_get_contents('php://input'), true);
-        
-        if (empty($data) || !is_array($data)) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-            return;
-        }
-        
-        $this->generateExcel($data, 'rail_export_' . date('Y-m-d_H-i-s'), 'rail');
+public function exportRailToExcel()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (empty($input) || !is_array($input)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
     }
+    
+    $exportData = $input['export_data'] ?? [];
+    $calculationParams = $input['calculation_params'] ?? [];
+    $exactMatch = $input['exact_match'] ?? false;
+    
+    // Если нужно точное соответствие, пересчитываем данные
+    if ($exactMatch && !empty($calculationParams)) {
+        $_POST = $calculationParams;
+        $result = $this->getRailPerevozki(true);
+        if (is_string($result)) {
+            $result = json_decode($result, true);
+        }
+        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
+    }
+    
+    if (empty($exportData)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $this->generateRailExcel($exportData, 'rail_export_' . date('Y-m-d_H-i-s'));
+}
     
     /**
      * Экспорт результатов комбинированных перевозок в Excel
      */
     public function exportCombToExcel()
-    {
-        $data = json_decode(file_get_contents('php://input'), true);
-        
-        if (empty($data) || !is_array($data)) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-            return;
-        }
-        
-        $this->generateExcel($data, 'combined_export_' . date('Y-m-d_H-i-s'), 'combined');
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (empty($input) || !is_array($input)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
     }
     
+    $exportData = $input['export_data'] ?? [];
+    $calculationParams = $input['calculation_params'] ?? [];
+    $exactMatch = $input['exact_match'] ?? false;
+    
+    // Если нужно точное соответствие, пересчитываем данные
+    if ($exactMatch && !empty($calculationParams)) {
+        $_POST = $calculationParams;
+        $result = $this->getCombPerevozki(true);
+        if (is_string($result)) {
+            $result = json_decode($result, true);
+        }
+        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
+    }
+    
+    if (empty($exportData)) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
+        return;
+    }
+    
+    $this->generateCombExcel($exportData, 'combined_export_' . date('Y-m-d_H-i-s'));
+}
+/**
+ * Генерация Excel для морских перевозок с точным соответствием таблице
+ */
+private function generateSeaExcel($data, $filename)
+{
+    try {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        
+        // Заголовки точно как в таблице результатов
+        $headers = [
+            'A' => 'Порт отправления',
+            'B' => 'Порт прибытия',
+            'C' => 'DROP OFF LOCATION',
+            'D' => 'Тип контейнера',
+            'E' => 'Собственность контейнера',
+            'F' => 'Охрана',
+            'G' => 'CAF (%)',
+            'H' => 'Стоимость обычного груза, USD',
+            'I' => 'Стоимость опасного груза, USD',
+            'J' => 'Агент',
+            'K' => 'Примечание'
+        ];
+        
+        // Заполняем заголовки
+        foreach ($headers as $col => $header) {
+            $sheet->setCellValue($col . '1', $header);
+            $sheet->getStyle($col . '1')->getFont()->setBold(true);
+        }
+        
+        // Заполняем данные точно как в таблице
+        $row = 2;
+        foreach ($data as $item) {
+            $sheet->setCellValue('A' . $row, $item['sea_pol'] ?? '');
+            $sheet->setCellValue('B' . $row, $item['sea_pod'] ?? '');
+            $sheet->setCellValue('C' . $row, $item['sea_drop_off_location'] ?? '');
+            $sheet->setCellValue('D' . $row, $item['sea_coc'] ?? '');
+            $sheet->setCellValue('E' . $row, $item['sea_container_ownership'] ?? '');
+            $sheet->setCellValue('F' . $row, $item['sea_security'] ?? 'Нет');
+            $sheet->setCellValue('G' . $row, $item['sea_caf_percent'] ?? 0);
+            $sheet->setCellValue('H' . $row, $item['cost_total_normal'] ?? 0);
+            $sheet->setCellValue('I' . $row, $item['cost_total_danger'] ?? 0);
+            $sheet->setCellValue('J' . $row, $item['sea_agent'] ?? '');
+            $sheet->setCellValue('K' . $row, $item['sea_remark'] ?? '');
+            $row++;
+        }
+        
+        $this->finalizeExcel($spreadsheet, $sheet, $filename);
+        
+    } catch (\Exception $e) {
+        $this->handleExcelError($e, 'морских перевозок');
+    }
+}
+
+/**
+ * Генерация Excel для ж/д перевозок с точным соответствием таблице
+ */
+private function generateRailExcel($data, $filename)
+{
+    try {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        
+        // Заголовки точно как в таблице результатов
+        $headers = [
+            'A' => 'Станция отправления',
+            'B' => 'Пункт назначения',
+            'C' => 'Тип контейнера',
+            'D' => 'Собственность контейнера',
+            'E' => 'Охрана',
+            'F' => 'Стоимость обычного груза, RUB',
+            'G' => 'Стоимость опасного груза, RUB',
+            'H' => 'Агент',
+            'I' => 'Комментарий'
+        ];
+        
+        // Заполняем заголовки
+        foreach ($headers as $col => $header) {
+            $sheet->setCellValue($col . '1', $header);
+            $sheet->getStyle($col . '1')->getFont()->setBold(true);
+        }
+        
+        // Заполняем данные точно как в таблице
+        $row = 2;
+        foreach ($data as $item) {
+            $sheet->setCellValue('A' . $row, $item['rail_origin'] ?? '');
+            $sheet->setCellValue('B' . $row, $item['rail_destination'] ?? '');
+            $sheet->setCellValue('C' . $row, $item['rail_coc'] ?? '');
+            $sheet->setCellValue('D' . $row, $item['rail_container_ownership'] ?? '');
+            $sheet->setCellValue('E' . $row, $item['rail_security'] ?? 'Нет');
+            $sheet->setCellValue('F' . $row, $item['cost_total_normal'] ?? 0);
+            $sheet->setCellValue('G' . $row, $item['cost_total_danger'] ?? 0);
+            $sheet->setCellValue('H' . $row, $item['rail_agent'] ?? '');
+            $sheet->setCellValue('I' . $row, $item['rail_remark'] ?? '');
+            $row++;
+        }
+        
+        $this->finalizeExcel($spreadsheet, $sheet, $filename);
+        
+    } catch (\Exception $e) {
+        $this->handleExcelError($e, 'ж/д перевозок');
+    }
+}
+
+/**
+ * Генерация Excel для комбинированных перевозок с точным соответствием таблице
+ */
+private function generateCombExcel($data, $filename)
+{
+    try {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        
+        // Заголовки точно как в таблице результатов
+        $headers = [
+            'A' => 'Морской порт отправления',
+            'B' => 'Морской порт прибытия',
+            'C' => 'DROP OFF LOCATION',
+            'D' => 'Тип контейнера',
+            'E' => 'Собственность контейнера',
+            'F' => 'Охрана',
+            'G' => 'Стоимость обычного груза, USD/RUB',
+            'H' => 'Стоимость опасного груза, USD/RUB',
+            'I' => 'Агент',
+            'J' => 'Комментарий'
+        ];
+        
+        // Заполняем заголовки
+        foreach ($headers as $col => $header) {
+            $sheet->setCellValue($col . '1', $header);
+            $sheet->getStyle($col . '1')->getFont()->setBold(true);
+        }
+        
+        // Заполняем данные точно как в таблице
+        $row = 2;
+        foreach ($data as $item) {
+            $sheet->setCellValue('A' . $row, $item['comb_sea_pol'] ?? '');
+            $sheet->setCellValue('B' . $row, $item['comb_sea_pod'] ?? '');
+            $sheet->setCellValue('C' . $row, $item['comb_drop_off'] ?? '');
+            $sheet->setCellValue('D' . $row, $item['comb_coc'] ?? '');
+            $sheet->setCellValue('E' . $row, $item['comb_container_ownership'] ?? '');
+            $sheet->setCellValue('F' . $row, $item['comb_security'] ?? 'Нет');
+            $sheet->setCellValue('G' . $row, $item['cost_total_normal_text'] ?? '');
+            $sheet->setCellValue('H' . $row, $item['cost_total_danger_text'] ?? '');
+            $sheet->setCellValue('I' . $row, $item['comb_agent'] ?? '');
+            $sheet->setCellValue('J' . $row, $item['comb_remark'] ?? '');
+            $row++;
+        }
+        
+        $this->finalizeExcel($spreadsheet, $sheet, $filename);
+        
+    } catch (\Exception $e) {
+        $this->handleExcelError($e, 'комбинированных перевозок');
+    }
+}
+
+/**
+ * Финальная обработка Excel файла
+ */
+private function finalizeExcel($spreadsheet, $sheet, $filename)
+{
+    // Авторазмер колонок
+    foreach (range('A', $sheet->getHighestColumn()) as $column) {
+        $sheet->getColumnDimension($column)->setAutoSize(true);
+    }
+    
+    // Установка границ для всех ячеек
+    $lastColumn = $sheet->getHighestColumn();
+    $lastRow = $sheet->getHighestRow();
+    $styleArray = [
+        'borders' => [
+            'allBorders' => [
+                'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+            ],
+        ],
+    ];
+    $sheet->getStyle('A1:' . $lastColumn . $lastRow)->applyFromArray($styleArray);
+    
+    // Форматирование числовых ячеек
+    $numericColumns = ['G', 'H', 'I']; // Настройте по мере необходимости
+    foreach ($numericColumns as $col) {
+        if ($col <= $lastColumn) {
+            for ($row = 2; $row <= $lastRow; $row++) {
+                $cell = $sheet->getCell($col . $row);
+                if (is_numeric($cell->getValue())) {
+                    $cell->getStyle()->getNumberFormat()->setFormatCode('#,##0.00');
+                }
+            }
+        }
+    }
+    
+    // Сохраняем файл
+    $writer = new Xlsx($spreadsheet);
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment;filename="' . $filename . '.xlsx"');
+    header('Cache-Control: max-age=0');
+    
+    $writer->save('php://output');
+    exit;
+}
+
+/**
+ * Обработка ошибок Excel
+ */
+private function handleExcelError($e, $type)
+{
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => true,
+        'message' => 'Ошибка при экспорте ' . $type . ' в Excel: ' . $e->getMessage()
+    ]);
+}
     /**
      * Генерация Excel файла
      */
@@ -1149,62 +1496,83 @@ public function getCombPerevozki() {
     try {
         // Получаем порт отправления (порт POL из морских перевозок)
         $seaPol = $params['comb_sea_pol'] ?? '';
+        $dropOff = $params['comb_drop_off'] ?? '';
         
-        // Получаем пункт назначения из комбинированных перевозок
-        $combDestPoint = $params['comb_rail_dest'] ?? '';
-        
-        if (empty($seaPol) || empty($combDestPoint)) {
+        if (empty($seaPol) || empty($dropOff)) {
             echo json_encode([
                 'error' => true,
-                'message' => 'Не указаны обязательные параметры: порт отправления или пункт назначения'
+                'message' => 'Не указаны обязательные параметры: порт отправления или DROP OFF'
             ], JSON_UNESCAPED_UNICODE);
             return;
         }
         
-        // Получаем все морские перевозки с указанным портом отправления (POL)
+        // Получаем все морские перевозки с указанным портом отправления и DROP OFF
         $seaPerevozki = self::fetchTransportData(
             28, 
             self::SEA_TRANSPORT_MAP,
             [
                 '=NAME' => $seaPol,
-                '=PROPERTY_132' => $params['comb_drop_off'],
+                '=PROPERTY_132' => $dropOff,
             ]
         );
         
         if (empty($seaPerevozki)) {
             echo json_encode([
                 'error' => true,
-                'message' => 'Не найдены морские перевозки для порта: ' . $seaPol
+                'message' => 'Не найдены морские перевозки для порта: ' . $seaPol . ' и DROP OFF: ' . $dropOff
             ], JSON_UNESCAPED_UNICODE);
             return;
         }
         
-        $combFilter['=PROPERTY_186'] = $combDestPoint;
-        if (!empty($params['comb_transshipment_port'])) {
-            $combFilter['=PROPERTY_182'] = $params['comb_transshipment_port'];
-        }
-        // Получаем все комбинированные перевозки для выбранного пункта назначения
+        // Получаем порт перевалки
+        $transshipmentPort = $params['comb_transshipment_port'] ?? '';
+        
+        // Получаем все комбинированные перевозки
         $combPerevozki = self::fetchTransportData(
             32,
             self::COMB_TRANSPORT_MAP,
-            $combFilter
+            []
         );
         
         if (empty($combPerevozki)) {
             echo json_encode([
                 'error' => true,
-                'message' => 'Не найдены комбинированные перевозки для пункта назначения: ' . $combDestPoint
+                'message' => 'Не найдены комбинированные перевозки'
             ], JSON_UNESCAPED_UNICODE);
             return;
         }
         
-        // Получаем уникальные станции отправления из комбинированных перевозок
-        $departureStations = array_unique(array_column($combPerevozki, 'STANTSIYA_OTPRAVLENIYA'));
+        // Получаем пункт назначения
+        $combDestPoint = $params['comb_rail_dest'] ?? '';
         
-        if (empty($departureStations)) {
+        // Если выбран порт перевалки - фильтруем комбинированные перевозки
+        if (!empty($transshipmentPort)) {
+            $filteredCombPerevozki = [];
+            foreach ($combPerevozki as $combItem) {
+                // Проверяем, что PUNKT_OTPRAVLENIYA соответствует порту перевалки
+                if (($combItem['PUNKT_OTPRAVLENIYA'] ?? '') === $transshipmentPort) {
+                    // Если выбран пункт назначения, фильтруем и по нему
+                    if (empty($combDestPoint) || ($combItem['PUNKT_NAZNACHENIYA'] ?? '') === $combDestPoint) {
+                        $filteredCombPerevozki[] = $combItem;
+                    }
+                }
+            }
+            $combPerevozki = $filteredCombPerevozki;
+        } elseif (!empty($combDestPoint)) {
+            // Если выбран только пункт назначения без порта перевалки
+            $filteredCombPerevozki = [];
+            foreach ($combPerevozki as $combItem) {
+                if (($combItem['PUNKT_NAZNACHENIYA'] ?? '') === $combDestPoint) {
+                    $filteredCombPerevozki[] = $combItem;
+                }
+            }
+            $combPerevozki = $filteredCombPerevozki;
+        }
+        
+        if (empty($combPerevozki)) {
             echo json_encode([
                 'error' => true,
-                'message' => 'Не найдены станции отправления для указанного пункта назначения'
+                'message' => 'Не найдены комбинированные перевозки для указанных параметров'
             ], JSON_UNESCAPED_UNICODE);
             return;
         }
@@ -1213,15 +1581,33 @@ public function getCombPerevozki() {
         $cocType = $params['comb_coc'] ?? '';
         $isHazard = ($params['comb_hazard'] ?? 'no') === 'yes';
         $security = $params['comb_security'] ?? 'no';
-        $profit = floatval($params['comb_profit'] ?? 0); // Добавляем параметр прибыли
+        $seaProfit = floatval($params['sea_profit'] ?? 0);
+        $railProfit = floatval($params['rail_profit'] ?? 0);
         $containerOwnership = $params['comb_container_ownership'] ?? 'no';
 
         // Для каждой найденной морской перевозки
         foreach ($seaPerevozki as $seaValue) {
-            // Для каждой комбинированной перевозки
-            foreach ($combPerevozki as $combValue) {
+            // Получаем морской порт прибытия (POD)
+            $seaPod = $seaValue['POD'] ?? '';
+            
+            // Фильтруем комбинированные перевозки по морскому порту прибытия
+            $filteredBySeaPod = [];
+            foreach ($combPerevozki as $combItem) {
+                // Проверяем, что POL в комбинированных соответствует POD морских
+                if (($combItem['POL'] ?? '') === $seaPod) {
+                    $filteredBySeaPod[] = $combItem;
+                }
+            }
+            
+            if (empty($filteredBySeaPod)) {
+                continue; // Нет комбинированных перевозок для этого морского POD
+            }
+            
+            // Для каждой подходящей комбинированной перевозки
+            foreach ($filteredBySeaPod as $combValue) {
                 $railStartStation = $combValue['STANTSIYA_OTPRAVLENIYA'] ?? '';
                 $railDestStation = $combValue['STANTSIYA_NAZNACHENIYA'] ?? '';
+                $combDestPoint = $combValue['PUNKT_NAZNACHENIYA'] ?? '';
                 
                 if (empty($railStartStation) || empty($railDestStation)) {
                     continue;
@@ -1232,11 +1618,11 @@ public function getCombPerevozki() {
                     30, 
                     self::ZHD_TRANSPORT_MAP,
                     [
-                        '=NAME' => $railStartStation, // STANTSIYA_OTPRAVLENIYA = NAME
+                        '=NAME' => $railStartStation,
                     ]
                 );
                 
-                // Фильтруем по станции назначения (POD должна совпадать со STANTSIYA_NAZNACHENIYA)
+                // Фильтруем по станции назначения
                 $filteredRailData = [];
                 foreach ($railData as $railItem) {
                     if (($railItem['POD'] ?? '') === $railDestStation) {
@@ -1278,11 +1664,11 @@ public function getCombPerevozki() {
                         
                         // Расчет для обычного груза COC
                         $cocNetto = ceil($dropOffCost + $cocCost);
-                        $costSeaCocNormal = ceil(($dropOffCost + $cocNetto) * (1 + $cafPercent / 100) + $securityCostSea);
-                        
+                        $costSeaCocNormal = ceil(($dropOffCost + $cocNetto) * (1 + $cafPercent / 100) + $securityCostSea + $seaProfit);
+
                         // Расчет для опасного груза COC
                         $cocNettoDanger = ceil($dropOffCost + $cocCostDanger);
-                        $costSeaCocDanger = ceil(($dropOffCost + $cocNettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
+                        $costSeaCocDanger = ceil(($dropOffCost + $cocNettoDanger) * (1 + $cafPercent / 100) + $securityCostSea + $seaProfit);
                         
                         // ===== Ж/Д ЧАСТЬ ДЛЯ COC =====
                         $railCostNormal = $this->getRailCostForContainerType($cocType, $railValue, false);
@@ -1290,9 +1676,9 @@ public function getCombPerevozki() {
                         
                         // Стоимость охраны для ЖД части
                         $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
-                        
-                        $costRailCocNormal = ceil($railCostNormal + $securityCostRail + $profit);
-                        $costRailCocDanger = ceil($railCostDanger + $securityCostRail + $profit);
+
+                        $costRailCocNormal = ceil($railCostNormal + $securityCostRail + $railProfit);
+                        $costRailCocDanger = ceil($railCostDanger + $securityCostRail + $railProfit);
                         
                         // Общие стоимости для COC
                         $totalCocNormal = $costSeaCocNormal + $costRailCocNormal;
@@ -1309,7 +1695,6 @@ public function getCombPerevozki() {
                             'comb_container_ownership' => 'COC',
                             'comb_hazard' => 'Оба варианта',
                             'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                            'comb_profit' => $profit,
                             'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
                             'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
                             
@@ -1336,10 +1721,7 @@ public function getCombPerevozki() {
                             'cost_rail_danger' => $costRailCocDanger,
                             'rail_base_cost_danger' => $railCostDanger,
                             'security_cost_rail_danger' => $securityCostRail,
-                            
-                            // Общие стоимости
-                            'cost_total_normal' => $totalCocNormal,
-                            'cost_total_danger' => $totalCocDanger,
+
                             'cost_total_normal_text' => $costSeaCocNormal . '$ + ' . $costRailCocNormal . ' руб',
                             'cost_total_danger_text' => $costSeaCocDanger . '$ + ' . $costRailCocDanger . ' руб',
                             
@@ -1354,8 +1736,8 @@ public function getCombPerevozki() {
                         
                         // Расчет для обычного груза SOC
                         $socNetto = ceil($dropOffCost + $socCost);
-                        $costSeaSocNormal = ceil(($dropOffCost + $socNetto) * (1 + $cafPercent / 100) + $securityCostSea);
-                        
+                        $costSeaSocNormal = ceil(($dropOffCost + $socNetto) * (1 + $cafPercent / 100) + $securityCostSea +  $seaProfit);
+
                         // Для SOC опасного используем те же стоимости что и для COC опасного
                         $costSeaSocDanger = $costSeaCocDanger;
                         
@@ -1378,7 +1760,6 @@ public function getCombPerevozki() {
                             'comb_container_ownership' => 'SOC',
                             'comb_hazard' => 'Оба варианта',
                             'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                            'comb_profit' => $profit,
                             'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
                             'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
                             
@@ -1454,11 +1835,11 @@ public function getCombPerevozki() {
                             
                             // Расчет для обычного груза
                             $netto = ceil($dropOffCost + $containerCost);
-                            $costSeaNormal = ceil(($dropOffCost + $netto) * (1 + $cafPercent / 100) + $securityCostSea);
-                            
+                            $costSeaNormal = ceil(($dropOffCost + $netto) * (1 + $cafPercent / 100) + $securityCostSea + $seaProfit);
+
                             // Расчет для опасного груза
                             $nettoDanger = ceil($dropOffCost + $containerCostDanger);
-                            $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
+                            $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea + $seaProfit);
                             
                             // ===== Ж/Д ЧАСТЬ =====
                             $railCostNormal = $this->getRailCostForContainerType($cocType, $railValue, false);
@@ -1466,9 +1847,9 @@ public function getCombPerevozki() {
                             
                             // Стоимость охраны для ЖД части
                             $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
-                            
-                            $costRailNormal = ceil($railCostNormal + $securityCostRail + $profit);
-                            $costRailDanger = ceil($railCostDanger + $securityCostRail + $profit);
+
+                            $costRailNormal = ceil($railCostNormal + $securityCostRail + $railProfit);
+                            $costRailDanger = ceil($railCostDanger + $securityCostRail + $railProfit);
                             
                             // Общие стоимости
                             $totalNormal = $costSeaNormal + $costRailNormal;
@@ -1485,7 +1866,6 @@ public function getCombPerevozki() {
                                 'comb_container_ownership' => $displayContainerType,
                                 'comb_hazard' => 'Нет',
                                 'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                                'comb_profit' => $profit,
                                 'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
                                 'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
                                 
@@ -1546,18 +1926,18 @@ public function getCombPerevozki() {
                             
                             // CAF процент
                             $cafPercent = floatval($seaValue['CAF_KONVERT'] ?? 0);
-                            
+
                             // Расчет для опасного груза
                             $nettoDanger = ceil($dropOffCost + $containerCostDanger);
-                            $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea);
+                            $costSeaDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $securityCostSea + $seaProfit);
                             
                             // ===== Ж/Д ЧАСТЬ ДЛЯ ОПАСНОГО ГРУЗА =====
                             $railCostDanger = $this->getRailCostForContainerType($cocType, $railValue, true);
                             
                             // Стоимость охраны для ЖД части
                             $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $cocType);
-                            
-                            $costRailDanger = ceil($railCostDanger + $securityCostRail + $profit);
+
+                            $costRailDanger = ceil($railCostDanger + $securityCostRail + $railProfit);
                             
                             // Общая стоимость
                             $totalDanger = $costSeaDanger + $costRailDanger;
@@ -1573,7 +1953,6 @@ public function getCombPerevozki() {
                                 'comb_container_ownership' => $displayContainerType,
                                 'comb_hazard' => 'Да',
                                 'comb_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                                'comb_profit' => $profit,
                                 'comb_agent' => trim(($seaValue['AGENT'] ?? '') . '; ' . ($railValue['AGENT'] ?? '')),
                                 'comb_remark' => $this->getCombinedRemark($seaValue, $combValue, $railValue),
                                 
@@ -1735,7 +2114,6 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                     'rail_agent' => $value['AGENT'] ?? '',
                     'rail_hazard' => $isHazard ? 'Да' : 'Нет',
                     'rail_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                    'rail_profit' => $profit,
                     'cost_base' => $baseCost,
                     'cost_security' => $securityCost,
                     'cost_total' => $totalCost,

@@ -15,9 +15,7 @@ $zhdStarts = array_unique(array_column($zhdPerevozki, 'POL'));
 
 // Списки комбинированных портов отправлений
 $combStarts = array_unique(array_column($seaPerevozki, 'POL'));
-        $allSeaPods = array_unique(array_column($seaPerevozki, 'POD'));
-        print_r($allSeaPods);
-        print_r($combStarts);
+$allSeaPods = array_unique(array_column($seaPerevozki, 'POD'));
 
 // Подготовка данных для Vue
 $seaPortsForVue = array_values($seaPorts);
@@ -84,6 +82,7 @@ $combStartsForVue = array_values($combStarts);
         </div>
 
         <!-- Сообщения о загрузке файлов -->
+        <!--
         <v-alert
             v-if="uploadMessage"
             :type="uploadMessageType"
@@ -93,7 +92,7 @@ $combStartsForVue = array_values($combStarts);
         >
             {{ uploadMessage }}
         </v-alert>
-
+ -->
         <v-main>
             <v-container fluid class="pa-4">
                 <v-card class="pa-4">
@@ -192,6 +191,19 @@ $combStartsForVue = array_values($combStarts);
                                         :return-object="false"
                                     ></v-select>
                                 </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-select
+                                        v-model="seaForm.dropOffLocation"
+                                        label="DROP OFF LOCATION"
+                                        :items="seaDropOffLocations"
+                                        variant="outlined"
+                                        :disabled="seaFormDisabled.dropOffLocation"
+                                        @update:model-value="onSeaDropOffChange"
+                                        item-title="title"
+                                        item-value="value"
+                                        :return-object="false"
+                                    ></v-select>
+                                </v-col>
                                 <v-col cols="12" md="2">
                                     <v-select
                                         v-model="seaForm.hazard"
@@ -224,19 +236,6 @@ $combStartsForVue = array_values($combStarts);
                                         variant="outlined"
                                         :disabled="seaFormDisabled.containerOwnership"
                                         @update:model-value="updateSeaCosts"
-                                        item-title="title"
-                                        item-value="value"
-                                        :return-object="false"
-                                    ></v-select>
-                                </v-col>
-                                <v-col cols="12" md="6">
-                                    <v-select
-                                        v-model="seaForm.dropOffLocation"
-                                        label="DROP OFF LOCATION"
-                                        :items="seaDropOffLocations"
-                                        variant="outlined"
-                                        :disabled="seaFormDisabled.dropOffLocation"
-                                        @update:model-value="onSeaDropOffChange"
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
@@ -461,6 +460,20 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                     ></v-select>
                                 </v-col>
+                                <v-col cols="12" md="5">
+                                    <v-select
+                                        v-model="combForm.transshipmentPort"
+                                        label="ПОРТ ПЕРЕВАЛКИ"
+                                        :items="transshipmentPorts"
+                                        variant="outlined"
+                                        :disabled="combFormDisabled.transshipmentPort"
+                                        @update:model-value="onTransshipmentPortChange"
+                                        item-title="title"
+                                        item-value="value"
+                                        :return-object="false"
+                                        clearable
+                                    ></v-select>
+                                </v-col>
                                 <v-col cols="12" md="4">
                                     <v-select
                                         v-model="combForm.coc"
@@ -495,20 +508,6 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                         :return-object="false"
                                         :disabled="combFormDisabled.hazard"
-                                    ></v-select>
-                                </v-col>
-                                <v-col cols="12" md="5">
-                                    <v-select
-                                        v-model="combForm.transshipmentPort"
-                                        label="ПОРТ ПЕРЕВАЛКИ"
-                                        :items="transshipmentPorts"
-                                        variant="outlined"
-                                        :disabled="combFormDisabled.transshipmentPort"
-                                        @update:model-value="onTransshipmentPortChange"
-                                        item-title="title"
-                                        item-value="value"
-                                        :return-object="false"
-                                        clearable
                                     ></v-select>
                                 </v-col>
                                 <v-col cols="12" md="6">
@@ -1169,7 +1168,7 @@ const onCombPolChange = () => {
     combForm.value.containerOwnership = 'no';
     combForm.value.hazard = 'no';
     combForm.value.transshipmentPort = '';
-    combForm.value.security = 'Нет';
+    combForm.value.security = 'no';
     combForm.value.seaProfit = '';
     combForm.value.railProfit = '';
     combForm.value.remark = '';
@@ -1228,7 +1227,7 @@ const onCombDropOffChange = () => {
     combForm.value.containerOwnership = 'no';
     combForm.value.hazard = 'no';
     combForm.value.transshipmentPort = '';
-    combForm.value.security = 'Нет';
+    combForm.value.security = 'no';
     combForm.value.seaProfit = '';
     combForm.value.railProfit = '';
     combForm.value.remark = '';
@@ -1272,38 +1271,16 @@ const onCombDropOffChange = () => {
     }));
 
 };
+
 const onTransshipmentPortChange = () => {
     combForm.value.destination = '';
     combResults.value = []; // Очищаем результаты при изменении порта перевалки
     
     if (!combForm.value.transshipmentPort) {
         // Если порт перевалки не выбран, показываем все пункты назначения
-        const selectedPol = combForm.value.seaPol;
-        const selectedDropOff = combForm.value.dropOff;
-        
-        // Получаем все POD для выбранных POL и DROP_OFF_LOCATION
-        const seaRecords = seaPerevozki.filter(item => 
-            item.POL === selectedPol && 
-            item.DROP_OFF_LOCATION === selectedDropOff
-        );
-        
-        // Получаем уникальные POD из морских перевозок
-        const seaPods = [...new Set(seaRecords.map(item => item.POD))];
-        
-        // Получаем все пункты назначения из комбинированных перевозок
-        const allDestinations = [...new Set(
-            combPerevozki
-                .filter(item => seaPods.includes(item.POL))
-                .map(item => item.PUNKT_NAZNACHENIYA)
-                .filter(dest => dest && dest.trim() !== '')
-        )];
-        
-        combDestinations.value = allDestinations.map(dest => ({ 
-            title: dest, 
-            value: dest 
-        }));
+        loadAllDestinationsForPol();
     } else {
-        // Если порт перевалки выбран, фильтруем по нему
+        // Если порт перевалки выбран, получаем пункты назначения для этого порта
         const selectedPol = combForm.value.seaPol;
         const selectedDropOff = combForm.value.dropOff;
         const selectedTransshipment = combForm.value.transshipmentPort;
@@ -1314,6 +1291,12 @@ const onTransshipmentPortChange = () => {
             item.DROP_OFF_LOCATION === selectedDropOff
         );
         
+        if (seaRecords.length === 0) {
+            combDestinations.value = [];
+            return;
+        }
+        
+        // Получаем уникальные POD из морских перевозок
         const seaPods = [...new Set(seaRecords.map(item => item.POD))];
         
         // Получаем пункты назначения из комбинированных перевозок где:
@@ -1335,7 +1318,6 @@ const onTransshipmentPortChange = () => {
         }));
     }
 };
-
 const onCombDestinationChange = () => {
     if (!combForm.value.destination) {
         return;
@@ -1369,59 +1351,23 @@ const calculateCombined = async () => {
         });
 
         const data = await response.json();
-        console.log(data);
+        
         if (data.error) {
             showUploadMessage(data.message || 'Ошибка расчета', 'error');
             return;
         }
 
-        // Применяем фильтрацию на клиенте
-        let filteredResults = Array.isArray(data) ? data : [];
-        console.log(combForm.value.transshipmentPort);
-        // Если выбран порт перевалки, получаем соответствующие станции отправления
-        if (combForm.value.transshipmentPort) {
-            // Находим все записи комбинированных перевозок для выбранного порта перевалки
-            filteredResults = filteredResults.filter(item => 
-                item.comb_transshipment_port === combForm.value.transshipmentPort
-            );
-            console.log(filteredResults);
-            // Получаем уникальные станции отправления (POL) для выбранного порта перевалки
-            const departureStations = [...new Set(
-                filteredResults.map(item => item.POL)
-            )];
-            
-            console.log('Станции отправления для порта перевалки:', departureStations);
-            /*
-            // Фильтруем результаты по станциям отправления
-            filteredResults = filteredResults.filter(item => {
-                // Получаем морской порт прибытия из результата
-                const seaPod = item.comb_sea_pod || item.sea_pod || '';
-                
-                // Проверяем, есть ли этот порт в списке станций отправления
-                return departureStations.includes(seaPod);
-            });*/
-        }
+        // Просто устанавливаем результаты без дополнительной фильтрации
+        // так как фильтрация теперь происходит на сервере
+        combResults.value = Array.isArray(data) ? data : [];
         
-/*
-        // Если выбрано конкретное назначение, фильтруем по нему
-        if (combForm.value.destination) {
-            filteredResults = filteredResults.filter(item => {
-                const destination = item.comb_destination || item.destination || '';
-                return destination === combForm.value.destination;
-            });
-        }*/
-
-        combResults.value = filteredResults;
-        
-        if (filteredResults.length === 0) {
+        if (combResults.value.length === 0) {
             showUploadMessage(
-                combForm.value.transshipmentPort 
-                    ? 'Нет результатов для выбранного порта перевалки и станций отправления' 
-                    : 'Нет результатов для выбранных параметров',
+                'Нет результатов для выбранных параметров',
                 'warning'
             );
         } else {
-            showUploadMessage('Расчет завершен успешно! Найдено результатов: ' + filteredResults.length, 'success');
+            showUploadMessage('Расчет завершен успешно! Найдено результатов: ' + combResults.value.length, 'success');
         }
     } catch (error) {
         console.error('Ошибка расчета:', error);
@@ -1441,81 +1387,129 @@ const calculateCombined = async () => {
 
         // Экспорт в Excel
         const exportToExcel = async (type) => {
-            let data = [];
-            let action = '';
+    let data = [];
+    let action = '';
+    let exportParams = {};
+    
+    switch(type) {
+        case 'sea':
+            data = seaResults.value;
+            action = 'exportSeaToExcel';
             
-            switch(type) {
-                case 'sea':
-                    data = seaResults.value;
-                    action = 'exportSeaToExcel';
-                    break;
-                case 'rail':
-                    data = railResults.value;
-                    action = 'exportRailToExcel';
-                    break;
-                case 'combined':
-                    data = combResults.value;
-                    action = 'exportCombToExcel';
-                    break;
-                default:
-                    return;
-            }
+            // Собираем параметры для точного соответствия расчету
+            exportParams = {
+                sea_pol: seaForm.value.pol,
+                sea_pod: seaForm.value.pod,
+                sea_drop_off_location: seaForm.value.dropOffLocation,
+                sea_coc: seaForm.value.coc,
+                sea_container_ownership: seaForm.value.containerOwnership,
+                sea_hazard: seaForm.value.hazard,
+                sea_security: seaForm.value.security,
+                sea_caf: seaForm.value.caf,
+                sea_profit: seaForm.value.profit,
+                // Для точного воспроизведения расчетов
+                exact_calculation: 'yes'
+            };
+            break;
+        case 'rail':
+            data = railResults.value;
+            action = 'exportRailToExcel';
             
-            if (!data || data.length === 0) {
-                showUploadMessage('Нет данных для экспорта', 'warning');
-                return;
-            }
+            exportParams = {
+                rail_origin: railForm.value.origin,
+                rail_destination: railForm.value.destination,
+                rail_coc: railForm.value.coc,
+                rail_container_ownership: railForm.value.containerOwnership,
+                rail_hazard: railForm.value.hazard,
+                rail_security: railForm.value.security,
+                rail_profit: railForm.value.profit,
+                exact_calculation: 'yes'
+            };
+            break;
+        case 'combined':
+            data = combResults.value;
+            action = 'exportCombToExcel';
             
-            showLoading('Подготовка файла Excel...');
-            
-            try {
-                const response = await fetch(cleanUrl + '?action=' + action, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Ошибка экспорта');
-                }
-
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                
-                // Генерируем имя файла
-                const date = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-                let filename = '';
-                switch(type) {
-                    case 'sea':
-                        filename = `морские_перевозки_${date}.xlsx`;
-                        break;
-                    case 'rail':
-                        filename = `жд_перевозки_${date}.xlsx`;
-                        break;
-                    case 'combined':
-                        filename = `комбинированные_перевозки_${date}.xlsx`;
-                        break;
-                }
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                
-                showUploadMessage(`Файл "${filename}" успешно экспортирован`, 'success');
-            } catch (error) {
-                console.error('Ошибка экспорта:', error);
-                showUploadMessage('Ошибка при экспорте в Excel: ' + error.message, 'error');
-            } finally {
-                hideLoading();
-            }
+            exportParams = {
+                comb_sea_pol: combForm.value.seaPol,
+                comb_drop_off: combForm.value.dropOff,
+                comb_rail_dest: combForm.value.destination || '',
+                comb_coc: combForm.value.coc,
+                comb_container_ownership: combForm.value.containerOwnership,
+                comb_hazard: combForm.value.hazard,
+                comb_transshipment_port: combForm.value.transshipmentPort || '',
+                comb_security: combForm.value.security,
+                sea_profit: combForm.value.seaProfit,
+                rail_profit: combForm.value.railProfit,
+                exact_calculation: 'yes'
+            };
+            break;
+        default:
+            return;
+    }
+    
+    if (!data || data.length === 0) {
+        showUploadMessage('Нет данных для экспорта', 'warning');
+        return;
+    }
+    
+    showLoading('Подготовка файла Excel...');
+    
+    try {
+        // Отправляем параметры расчета для точного воспроизведения
+        const payload = {
+            export_data: data,
+            calculation_params: exportParams,
+            exact_match: true
         };
+
+        const response = await fetch(cleanUrl + '?action=' + action, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Ошибка экспорта');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        
+        // Генерируем имя файла
+        const date = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        let filename = '';
+        switch(type) {
+            case 'sea':
+                filename = `морские_перевозки_${date}.xlsx`;
+                break;
+            case 'rail':
+                filename = `жд_перевозки_${date}.xlsx`;
+                break;
+            case 'combined':
+                filename = `комбинированные_перевозки_${date}.xlsx`;
+                break;
+        }
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showUploadMessage(`Файл "${filename}" успешно экспортирован`, 'success');
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        showUploadMessage('Ошибка при экспорте в Excel: ' + error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+};
 
         // Загрузка файлов
         const fileInput = ref(null);
