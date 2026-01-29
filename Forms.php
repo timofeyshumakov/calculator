@@ -34,6 +34,8 @@ $combStartsForVue = array_values($combStarts);
     <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900&display=swap" rel="stylesheet">
     
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
     <style>
         .v-application {
             background-color: #f5f5f5 !important;
@@ -199,30 +201,6 @@ $combStartsForVue = array_values($combStarts);
                                         variant="outlined"
                                         :disabled="seaFormDisabled.dropOffLocation"
                                         @update:model-value="onSeaDropOffChange"
-                                        item-title="title"
-                                        item-value="value"
-                                        :return-object="false"
-                                    ></v-select>
-                                </v-col>
-                                <v-col cols="12" md="2">
-                                    <v-select
-                                        v-model="seaForm.hazard"
-                                        label="Опасный груз?"
-                                        :items="hazardOptions"
-                                        variant="outlined"
-                                        :disabled="seaFormDisabled.hazard"
-                                        item-title="title"
-                                        item-value="value"
-                                        :return-object="false"
-                                    ></v-select>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-select
-                                        v-model="seaForm.security"
-                                        label="Охрана"
-                                        :items="securityOptions"
-                                        variant="outlined"
-                                        :disabled="seaFormDisabled.security"
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
@@ -753,7 +731,6 @@ createApp({
             { title: 'DROP OFF LOCATION', key: 'sea_drop_off_location', sortable: true },
             { title: 'Тип контейнера', key: 'sea_coc', sortable: true },
             { title: 'Собственность контейнера', key: 'sea_container_ownership', sortable: true },
-            { title: 'Охрана', key: 'sea_security', sortable: true },
             { title: 'CAF (%)', key: 'sea_caf_percent', sortable: true },
             { title: 'Стоимость обычного груза, USD', key: 'cost_total_normal', sortable: true },
             { title: 'Стоимость опасного груза, USD', key: 'cost_total_danger', sortable: true },
@@ -964,15 +941,6 @@ createApp({
                 seaForm.value.caf = rec.CAF_KONVERT || '';
                 seaForm.value.remark = rec.REMARK || '';
                 seaForm.value.agent = rec.AGENT || '';
-                
-                // Автоматически выбираем тип собственности контейнера, если есть данные
-                if (coc === '20DC') {
-                    if (rec.COC_20GP) seaForm.value.containerOwnership = 'coc';
-                    else if (rec.SOC_20GP) seaForm.value.containerOwnership = 'soc';
-                } else if (coc === '40HC') {
-                    if (rec.COC_40HC) seaForm.value.containerOwnership = 'coc';
-                    else if (rec.SOC_40HC) seaForm.value.containerOwnership = 'soc';
-                }
             }
         };
 
@@ -1046,7 +1014,6 @@ createApp({
                     sea_coc: seaForm.value.coc,
                     sea_container_ownership: seaForm.value.containerOwnership,
                     sea_hazard: seaForm.value.hazard,
-                    sea_security: seaForm.value.security,
                     sea_caf: seaForm.value.caf,
                     sea_profit: seaForm.value.profit
                 };
@@ -1386,63 +1353,26 @@ const calculateCombined = async () => {
         };
 
         // Экспорт в Excel
-        const exportToExcel = async (type) => {
+const exportToExcel = async (type) => {
     let data = [];
-    let action = '';
-    let exportParams = {};
+    let headers = [];
+    let filename = '';
     
     switch(type) {
         case 'sea':
             data = seaResults.value;
-            action = 'exportSeaToExcel';
-            
-            // Собираем параметры для точного соответствия расчету
-            exportParams = {
-                sea_pol: seaForm.value.pol,
-                sea_pod: seaForm.value.pod,
-                sea_drop_off_location: seaForm.value.dropOffLocation,
-                sea_coc: seaForm.value.coc,
-                sea_container_ownership: seaForm.value.containerOwnership,
-                sea_hazard: seaForm.value.hazard,
-                sea_security: seaForm.value.security,
-                sea_caf: seaForm.value.caf,
-                sea_profit: seaForm.value.profit,
-                // Для точного воспроизведения расчетов
-                exact_calculation: 'yes'
-            };
+            headers = seaResultHeaders.value;
+            filename = `морские_перевозки_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`;
             break;
         case 'rail':
             data = railResults.value;
-            action = 'exportRailToExcel';
-            
-            exportParams = {
-                rail_origin: railForm.value.origin,
-                rail_destination: railForm.value.destination,
-                rail_coc: railForm.value.coc,
-                rail_container_ownership: railForm.value.containerOwnership,
-                rail_hazard: railForm.value.hazard,
-                rail_security: railForm.value.security,
-                rail_profit: railForm.value.profit,
-                exact_calculation: 'yes'
-            };
+            headers = railResultHeaders.value;
+            filename = `жд_перевозки_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`;
             break;
         case 'combined':
             data = combResults.value;
-            action = 'exportCombToExcel';
-            
-            exportParams = {
-                comb_sea_pol: combForm.value.seaPol,
-                comb_drop_off: combForm.value.dropOff,
-                comb_rail_dest: combForm.value.destination || '',
-                comb_coc: combForm.value.coc,
-                comb_container_ownership: combForm.value.containerOwnership,
-                comb_hazard: combForm.value.hazard,
-                comb_transshipment_port: combForm.value.transshipmentPort || '',
-                comb_security: combForm.value.security,
-                sea_profit: combForm.value.seaProfit,
-                rail_profit: combForm.value.railProfit,
-                exact_calculation: 'yes'
-            };
+            headers = combResultHeaders.value;
+            filename = `комбинированные_перевозки_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`;
             break;
         default:
             return;
@@ -1453,64 +1383,75 @@ const calculateCombined = async () => {
         return;
     }
     
-    showLoading('Подготовка файла Excel...');
+    showLoading('Подготовка Excel файла...');
     
     try {
-        // Отправляем параметры расчета для точного воспроизведения
-        const payload = {
-            export_data: data,
-            calculation_params: exportParams,
-            exact_match: true
+        // Создаем новую рабочую книгу
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Результаты');
+        
+        // Добавляем заголовки
+        const headerRow = worksheet.addRow(headers.map(h => h.title));
+        headerRow.font = { bold: true };
+        headerRow.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE0E0E0' }
         };
-
-        const response = await fetch(cleanUrl + '?action=' + action, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
+        
+        // Добавляем данные
+        data.forEach(item => {
+            const rowData = headers.map(header => item[header.key] || '');
+            worksheet.addRow(rowData);
         });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Ошибка экспорта');
-        }
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
         
-        // Генерируем имя файла
-        const date = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        let filename = '';
-        switch(type) {
-            case 'sea':
-                filename = `морские_перевозки_${date}.xlsx`;
-                break;
-            case 'rail':
-                filename = `жд_перевозки_${date}.xlsx`;
-                break;
-            case 'combined':
-                filename = `комбинированные_перевозки_${date}.xlsx`;
-                break;
-        }
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        // Настраиваем ширину столбцов
+        worksheet.columns = headers.map((header, index) => {
+            const headerLength = header.title.length;
+            const maxDataLength = Math.max(
+                ...data.map(row => {
+                    const value = row[header.key];
+                    return value ? value.toString().length : 0;
+                })
+            );
+            return { 
+                width: Math.max(headerLength, maxDataLength, 10) + 2,
+                header: header.title
+            };
+        });
         
-        showUploadMessage(`Файл "${filename}" успешно экспортирован`, 'success');
+        // Добавляем границы ко всем ячейкам
+        worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                cell.border = {
+                    top: { style: 'thin' },
+                    left: { style: 'thin' },
+                    bottom: { style: 'thin' },
+                    right: { style: 'thin' }
+                };
+            });
+        });
+        
+        // Замораживаем заголовок
+        worksheet.views = [
+            { state: 'frozen', xSplit: 0, ySplit: 1 }
+        ];
+        
+        // Генерируем и скачиваем файл
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { 
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        saveAs(blob, filename);
+        
+        showUploadMessage(`Файл "${filename}" успешно создан`, 'success');
     } catch (error) {
-        console.error('Ошибка экспорта:', error);
-        showUploadMessage('Ошибка при экспорте в Excel: ' + error.message, 'error');
+        console.error('Ошибка создания Excel:', error);
+        showUploadMessage('Ошибка при создании Excel: ' + error.message, 'error');
     } finally {
         hideLoading();
     }
 };
-
         // Загрузка файлов
         const fileInput = ref(null);
         const currentUploadType = ref('');
@@ -1551,6 +1492,7 @@ const calculateCombined = async () => {
                 updateProgress(70, 'Обработка файла на сервере...');
                 
                 const text = await response.text();
+                console.log(text);
                 let payload;
                 try {
                     payload = text ? JSON.parse(text) : {};

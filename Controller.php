@@ -215,77 +215,6 @@ public function exportCombToExcel()
     $this->generateCombExcel($exportData, 'combined_export_' . date('Y-m-d_H-i-s'));
 }
     
-    /**
-     * Экспорт результатов ж/д перевозок в Excel
-     */
-public function exportRailToExcel()
-{
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    if (empty($input) || !is_array($input)) {
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-        return;
-    }
-    
-    $exportData = $input['export_data'] ?? [];
-    $calculationParams = $input['calculation_params'] ?? [];
-    $exactMatch = $input['exact_match'] ?? false;
-    
-    // Если нужно точное соответствие, пересчитываем данные
-    if ($exactMatch && !empty($calculationParams)) {
-        $_POST = $calculationParams;
-        $result = $this->getRailPerevozki(true);
-        if (is_string($result)) {
-            $result = json_decode($result, true);
-        }
-        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
-    }
-    
-    if (empty($exportData)) {
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-        return;
-    }
-    
-    $this->generateRailExcel($exportData, 'rail_export_' . date('Y-m-d_H-i-s'));
-}
-    
-    /**
-     * Экспорт результатов комбинированных перевозок в Excel
-     */
-    public function exportCombToExcel()
-{
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    if (empty($input) || !is_array($input)) {
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-        return;
-    }
-    
-    $exportData = $input['export_data'] ?? [];
-    $calculationParams = $input['calculation_params'] ?? [];
-    $exactMatch = $input['exact_match'] ?? false;
-    
-    // Если нужно точное соответствие, пересчитываем данные
-    if ($exactMatch && !empty($calculationParams)) {
-        $_POST = $calculationParams;
-        $result = $this->getCombPerevozki(true);
-        if (is_string($result)) {
-            $result = json_decode($result, true);
-        }
-        $exportData = is_array($result) && !isset($result['error']) ? $result : $exportData;
-    }
-    
-    if (empty($exportData)) {
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['error' => true, 'message' => 'Нет данных для экспорта']);
-        return;
-    }
-    
-    $this->generateCombExcel($exportData, 'combined_export_' . date('Y-m-d_H-i-s'));
-}
 /**
  * Генерация Excel для морских перевозок с точным соответствием таблице
  */
@@ -880,7 +809,7 @@ public function getSeaPerevozki() {
     $params = $_POST;
     
     try {
-        // Получаем данные морских перевозок с фильтрацией
+        // Получаем данные морских перевозок
         $seaPerevozki = self::fetchTransportData(
             28, 
             self::SEA_TRANSPORT_MAP,
@@ -891,7 +820,7 @@ public function getSeaPerevozki() {
             ]
         );
         
-        // Если не нашли по точному совпадению DROP_OFF_LOCATION, ищем только по POL и POD
+        // Если не нашли по точному совпадению, ищем только по POL и POD
         if (empty($seaPerevozki) && !empty($params['sea_pol']) && !empty($params['sea_pod'])) {
             $seaPerevozki = self::fetchTransportData(
                 28, 
@@ -903,236 +832,192 @@ public function getSeaPerevozki() {
             );
         }
         
+        // Если не нашли данные вообще
+        if (empty($seaPerevozki)) {
+            echo json_encode([
+                'error' => true,
+                'message' => 'Не найдены данные для указанных параметров'
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+        
         // Параметры расчета
         $isHazard = ($params['sea_hazard'] ?? 'no') === 'yes';
-        $security = $params['sea_security'] ?? 'no';
         $cafPercent = floatval($params['sea_caf'] ?? 0);
         $profit = floatval($params['sea_profit'] ?? 0);
         $containerOwnership = $params['sea_container_ownership'] ?? 'no';
         $containerType = $params['sea_coc'] ?? '';
         
+        // Определяем типы контейнеров для отображения
+        $containerTypesToShow = empty($containerType) ? ['20DC', '40HC'] : [$containerType];
+        
+        // Флаг для раздельного отображения COC/SOC
+        $showBothOwnership = ($containerOwnership === 'no');
+        
         // Обрабатываем каждую найденную запись
         foreach ($seaPerevozki as $value) {
-            // Получаем стоимости для выбранного типа контейнера
-            $cocCost20 = ceil(floatval($value['COC_20GP'] ?? 0));
-            $cocCost40 = ceil(floatval($value['COC_40HC'] ?? 0));
-            $socCost20 = ceil(floatval($value['SOC_20GP'] ?? 0));
-            $socCost40 = ceil(floatval($value['SOC_40HC'] ?? 0));
-            
-            // Стоимость опасного груза
-            $dangerCocCost20 = ceil(floatval($value['OPASNYY_20DC'] ?? 0));
-            $dangerCocCost40 = ceil(floatval($value['OPASNYY_40HC'] ?? 0));
-            
-            // DROP OFF стоимости
-            $dropOffCost20 = ceil(floatval($value['DROP_OFF_20GP'] ?? 0));
-            $dropOffCost40 = ceil(floatval($value['DROP_OFF_40HC'] ?? 0));
-            
-            // Стоимость охраны
-            $securityCost20 = ceil(floatval($value['OKHRANA_20_FUT'] ?? 0));
-            $securityCost40 = ceil(floatval($value['OKHRANA_40_FUT'] ?? 0));
-            
-            // Определяем, какие типы контейнеров показывать
-            $containerTypesToShow = [];
-            if (empty($containerType)) {
-                $containerTypesToShow = ['20GP', '40HC'];
-            } else {
-                $containerTypesToShow = [$containerType];
-            }
-            
             foreach ($containerTypesToShow as $cType) {
-                $is20GP = ($cType === '20GP');
+                $is20GP = ($cType === '20DC');
+    //echo json_encode($cType, JSON_UNESCAPED_UNICODE);
+    //return json_encode($cType, JSON_UNESCAPED_UNICODE);
+                // Получаем стоимости
+                $costs = $this->getSeaCosts($value, $is20GP);
                 
-                // Базовые стоимости для текущего типа контейнера
-                $dropOffCost = $is20GP ? $dropOffCost20 : $dropOffCost40;
-                $securityCostForType = $is20GP ? $securityCost20 : $securityCost40;
-                $actualSecurityCost = ($security === '20' && $is20GP) || ($security === '40' && !$is20GP) ? $securityCostForType : 0;
+                // Проверяем наличие цен для выбранных параметров
+                $shouldSkip = false;
                 
-                // Если собственность контейнера не выбрана ('no') - показываем оба варианта в ОТДЕЛЬНЫХ РЯДАХ
-                if ($containerOwnership === 'no') {
-                    // Ряд для COC
-                    $cocCostNormal = $is20GP ? $cocCost20 : $cocCost40;
-                    $cocCostDanger = $is20GP ? $dangerCocCost20 : $dangerCocCost40;
-                    
-                    // Расчет для обычного груза COC
-                    $cocNettoNormal = $dropOffCost + $cocCostNormal;
-                    $cocTotalNormal = ceil(($dropOffCost + $cocNettoNormal) * (1 + $cafPercent / 100) + $profit + $actualSecurityCost);
-                    
-                    // Расчет для опасного груза COC
-                    $cocNettoDanger = $dropOffCost + $cocCostDanger;
-                    $cocTotalDanger = ceil(($dropOffCost + $cocNettoDanger) * (1 + $cafPercent / 100) + $profit + $actualSecurityCost);
-                    
-                    $resultItemCOC = [
-                        'sea_pol' => $value['POL'] ?? '',
-                        'sea_pod' => $value['POD'] ?? '',
-                        'sea_drop_off_location' => $value['DROP_OFF_LOCATION'] ?? '',
-                        'sea_coc' => $cType,
-                        'sea_container_ownership' => 'COC',
-                        'sea_agent' => $value['AGENT'] ?? '',
-                        'sea_remark' => $value['REMARK'] ?? '',
-                        'sea_hazard' => 'Оба варианта',
-                        'sea_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                        'sea_caf_percent' => $cafPercent,
-                        'sea_profit' => $profit,
-                        
-                        // Обычный груз
-                        'cost_container_normal' => $cocCostNormal,
-                        'cost_netto_normal' => $cocNettoNormal,
-                        'cost_total_normal' => $cocTotalNormal,
-                        
-                        // Опасный груз
-                        'cost_container_danger' => $cocCostDanger,
-                        'cost_netto_danger' => $cocNettoDanger,
-                        'cost_total_danger' => $cocTotalDanger,
-                        
-                        // Общие поля
-                        'cost_drop_off' => $dropOffCost,
-                        'cost_security' => $actualSecurityCost,
-                        
-                        'show_both_ownership' => false, // Теперь false, так как показываем в отдельных рядах
-                        'show_both_hazard_in_columns' => true
-                    ];
-                    
-                    // Ряд для SOC
-                    $socCostNormal = $is20GP ? $socCost20 : $socCost40;
-                    
-                    // Расчет для обычного груза SOC
-                    $socNettoNormal = $dropOffCost + $socCostNormal;
-                    $socTotalNormal = ceil(($dropOffCost + $socNettoNormal) * (1 + $cafPercent / 100) + $profit + $actualSecurityCost);
-                    
-                    // Для SOC опасного используем те же стоимости что и для COC опасного
-                    $socTotalDanger = $cocTotalDanger;
-                    
-                    $resultItemSOC = [
-                        'sea_pol' => $value['POL'] ?? '',
-                        'sea_pod' => $value['POD'] ?? '',
-                        'sea_drop_off_location' => $value['DROP_OFF_LOCATION'] ?? '',
-                        'sea_coc' => $cType,
-                        'sea_container_ownership' => 'SOC',
-                        'sea_agent' => $value['AGENT'] ?? '',
-                        'sea_remark' => $value['REMARK'] ?? '',
-                        'sea_hazard' => 'Оба варианта',
-                        'sea_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                        'sea_caf_percent' => $cafPercent,
-                        'sea_profit' => $profit,
-                        
-                        // Обычный груз
-                        'cost_container_normal' => $socCostNormal,
-                        'cost_netto_normal' => $socNettoNormal,
-                        'cost_total_normal' => $socTotalNormal,
-                        
-                        // Опасный груз (используем стоимости COC опасного)
-                        'cost_container_danger' => $cocCostDanger,
-                        'cost_netto_danger' => $cocNettoDanger,
-                        'cost_total_danger' => $socTotalDanger,
-                        
-                        // Общие поля
-                        'cost_drop_off' => $dropOffCost,
-                        'cost_security' => $actualSecurityCost,
-                        
-                        'show_both_ownership' => false, // Теперь false, так как показываем в отдельных рядах
-                        'show_both_hazard_in_columns' => true
-                    ];
-                    
-                    // Добавляем оба ряда в результат
-                    $result[] = $resultItemCOC;
-                    $result[] = $resultItemSOC;
-                    
+                if ($showBothOwnership) {
+                    // Проверяем оба варианта: COC и SOC
+                    if ($isHazard) {
+                        // Для опасного груза проверяем цены COC
+                        if (empty($costs['coc_danger']) || floatval($costs['coc_danger']) <= 0) {
+                            $shouldSkip = true;
+                        }
+                    } else {
+                        // Для обычного груза проверяем цены COC и SOC
+                        if ((empty($costs['coc_normal']) || floatval($costs['coc_normal']) <= 0) &&
+                            (empty($costs['soc_normal']) || floatval($costs['soc_normal']) <= 0)) {
+                            $shouldSkip = true;
+                        }
+                    }
                 } else {
-                    // Если выбрана конкретная собственность контейнера
-                    $displayContainerType = $containerOwnership === 'coc' ? 'COC' : 'SOC';
+                    // Проверяем один вариант собственности
+                    if ($containerOwnership === 'coc') {
+                        if ($isHazard) {
+                            // COC опасный
+                            if (empty($costs['coc_danger']) || floatval($costs['coc_danger']) <= 0) {
+                                $shouldSkip = true;
+                            }
+                        } else {
+                            // COC обычный
+                            if (empty($costs['coc_normal']) || floatval($costs['coc_normal']) <= 0) {
+                                $shouldSkip = true;
+                            }
+                        }
+                    } elseif ($containerOwnership === 'soc') {
+                        if ($isHazard) {
+                            // SOC опасный (используем COC цены)
+                            if (empty($costs['coc_danger']) || floatval($costs['coc_danger']) <= 0) {
+                                $shouldSkip = true;
+                            }
+                        } else {
+                            // SOC обычный
+                            if (empty($costs['soc_normal']) || floatval($costs['soc_normal']) <= 0) {
+                                $shouldSkip = true;
+                            }
+                        }
+                    }
+                }
+                
+                // Пропускаем строку если нет цены
+                if ($shouldSkip) {
+                    continue;
+                }
+                
+                $dropOffCost = $is20GP ? $costs['drop_off_20'] : $costs['drop_off_40'];
+
+                // Если показываем оба варианта собственности
+                if ($showBothOwnership) {
+                    // Проверяем наличие цены для COC
+                    $hasCOCCost = !empty($costs['coc_normal']) && floatval($costs['coc_normal']) > 0;
+                    $hasSOCSCost = !empty($costs['soc_normal']) && floatval($costs['soc_normal']) > 0;
+                    
+                    // Добавляем COC вариант только если есть цена
+                    if ($hasCOCCost) {
+                        $result[] = $this->createSeaResultItem(
+                            $value, $cType, 'COC', 'Оба варианта', 
+                            $cafPercent, $profit, $dropOffCost,
+                            $costs['coc_normal'], $costs['coc_danger']
+                        );
+                    }
+                    
+                    // Добавляем SOC вариант только если есть цена
+                    if ($hasSOCSCost) {
+                        $result[] = $this->createSeaResultItem(
+                            $value, $cType, 'SOC', 'Оба варианта',
+                            $cafPercent, $profit, $dropOffCost,
+                            $costs['soc_normal'], $costs['coc_danger'], // Для опасного используем COC стоимость
+                            $costs['soc_normal']
+                        );
+                    }
+                } else {
+                    // Один вариант собственности
+                    $selectedType = $containerOwnership === 'coc' ? 'COC' : 'SOC';
+                    
+                    // Получаем стоимость контейнера
+                    $containerCost = 0;
+                    if ($containerOwnership === 'coc') {
+                        $containerCost = $is20GP ? $costs['coc_normal'] : $costs['coc_40_normal'];
+                    } else {
+                        $containerCost = $is20GP ? $costs['soc_normal'] : $costs['soc_40_normal'];
+                    }
+                    
+                    // Проверяем что стоимость не нулевая
+                    if (empty($containerCost) || floatval($containerCost) <= 0) {
+                        continue;
+                    }
                     
                     if (!$isHazard) {
-                        // Пользователь выбрал обычный груз - показываем оба варианта (обычный и опасный)
-                        $containerCost = $containerOwnership === 'soc' 
-                            ? ($is20GP ? $socCost20 : $socCost40)
-                            : ($is20GP ? $cocCost20 : $cocCost40);
-                        $dangerContainerCost = $containerOwnership === 'soc' 
-                            ? ($is20GP ? $dangerCocCost20 : $dangerCocCost40)
-                            : ($is20GP ? $dangerCocCost20 : $dangerCocCost40);
+                        // Обычный груз - показываем оба варианта опасности
+                        // Проверяем наличие цены для опасного груза
+                        $dangerCost = $is20GP ? $costs['coc_danger'] : $costs['coc_40_danger'];
                         
-                        // Расчет для обычного груза
-                        $netto = $dropOffCost + $containerCost;
-                        $totalCost = ceil(($dropOffCost + $netto) * (1 + $cafPercent / 100) + $profit + $actualSecurityCost);
-                        
-                        // Расчет для опасного груза
-                        $nettoDanger = $dropOffCost + $dangerContainerCost;
-                        $totalCostDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $profit + $actualSecurityCost);
-                        
-                        $resultItem = [
-                            'sea_pol' => $value['POL'] ?? '',
-                            'sea_pod' => $value['POD'] ?? '',
-                            'sea_drop_off_location' => $value['DROP_OFF_LOCATION'] ?? '',
-                            'sea_coc' => $cType,
-                            'sea_container_ownership' => $displayContainerType,
-                            'sea_agent' => $value['AGENT'] ?? '',
-                            'sea_remark' => $value['REMARK'] ?? '',
-                            'sea_hazard' => 'Нет',
-                            'sea_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
-                            'sea_caf_percent' => $cafPercent,
-                            'sea_profit' => $profit,
-                            
-                            // Обычный груз
-                            'cost_container_normal' => $containerCost,
-                            'cost_netto_normal' => $netto,
-                            'cost_total_normal' => $totalCost,
-                            
-                            // Опасный груз
-                            'cost_container_danger' => $dangerContainerCost,
-                            'cost_netto_danger' => $nettoDanger,
-                            'cost_total_danger' => $totalCostDanger,
-                            
-                            // Общие поля
-                            'cost_drop_off' => $dropOffCost,
-                            'cost_security' => $actualSecurityCost,
-                            
-                            'show_both_ownership' => false,
-                            'show_both_hazard_in_columns' => true
-                        ];
-                        
-                        $result[] = $resultItem;
-                        
+                        if (empty($dangerCost) || floatval($dangerCost) <= 0) {
+                            // Если нет цены для опасного груза, показываем только обычный
+                            $result[] = $this->createSeaResultItem(
+                                $value, $cType, $selectedType, 'Нет',
+                                $cafPercent, $profit, $dropOffCost,
+                                $containerCost, 0
+                            );
+                        } else {
+                            $result[] = $this->createSeaResultItem(
+                                $value, $cType, $selectedType, 'Нет',
+                                $cafPercent, $profit, $dropOffCost,
+                                $containerCost, $dangerCost
+                            );
+                        }
                     } else {
-                        // Пользователь выбрал опасный груз - показываем только опасный
-                        $dangerContainerCost = $containerOwnership === 'soc' 
-                            ? ($is20GP ? $dangerCocCost20 : $dangerCocCost40)
-                            : ($is20GP ? $dangerCocCost20 : $dangerCocCost40);
+                        // Опасный груз - показываем только опасный
+                        $dangerCost = $is20GP ? $costs['coc_danger'] : $costs['coc_40_danger'];
                         
-                        $nettoDanger = $dropOffCost + $dangerContainerCost;
-                        $totalCostDanger = ceil(($dropOffCost + $nettoDanger) * (1 + $cafPercent / 100) + $profit + $actualSecurityCost);
+                        // Проверяем наличие цены для опасного груза
+                        if (empty($dangerCost) || floatval($dangerCost) <= 0) {
+                            continue; // Пропускаем если нет цены для опасного груза
+                        }
                         
-                        $resultItem = [
+                        $nettoDanger = ceil($dangerCost);
+                        $totalDanger = ceil($dangerCost * (1 + $cafPercent / 100) + $profit);
+                        
+                        $result[] = [
                             'sea_pol' => $value['POL'] ?? '',
                             'sea_pod' => $value['POD'] ?? '',
                             'sea_drop_off_location' => $value['DROP_OFF_LOCATION'] ?? '',
                             'sea_coc' => $cType,
-                            'sea_container_ownership' => $displayContainerType,
+                            'sea_container_ownership' => $selectedType,
                             'sea_agent' => $value['AGENT'] ?? '',
                             'sea_remark' => $value['REMARK'] ?? '',
                             'sea_hazard' => 'Да',
-                            'sea_security' => $security === 'no' ? 'Нет' : ($security === '20' ? '20 фут' : '40 фут'),
                             'sea_caf_percent' => $cafPercent,
                             'sea_profit' => $profit,
-                            
-                            // Только опасный груз
-                            'cost_container' => $dangerContainerCost,
+                            'cost_container' => $dangerCost,
                             'cost_netto' => $nettoDanger,
-                            'cost_total' => $totalCostDanger,
-                            
-                            // Общие поля
+                            'cost_total' => $totalDanger,
+                            'is20GP' => $is20GP,
                             'cost_drop_off' => $dropOffCost,
-                            'cost_security' => $actualSecurityCost,
-                            
-                            // Формула расчета
-                            'calculation_formula' => "($dropOffCost + $nettoDanger) × (1 + $cafPercent/100) + $profit + $actualSecurityCost = " . number_format($totalCostDanger, 2) . " $",
-                            
                             'show_both_ownership' => false,
                             'show_both_hazard_in_columns' => false
                         ];
-                        
-                        $result[] = $resultItem;
                     }
                 }
             }
+        }
+        
+        // Если после фильтрации нет данных
+        if (empty($result)) {
+            $result = [
+                'error' => true,
+                'message' => 'Не найдены данные с указанными ценами для выбранных параметров'
+            ];
         }
 
     } catch (\Exception $e) {
@@ -1146,12 +1031,74 @@ public function getSeaPerevozki() {
     echo json_encode($result, JSON_UNESCAPED_UNICODE);
     return json_encode($result, JSON_UNESCAPED_UNICODE);
 }
-    /**
-     * Получаем ж/д маршруты для отображения
-     *
-     * @return [type]
-     */
-    /**
+
+/**
+ * Получает стоимости для морской перевозки
+ */
+private function getSeaCosts($data, $is20GP): array {
+    
+    return [
+        'coc_normal' => ceil(floatval($is20GP ? ($data['COC_20GP'] ?? 0) : ($data['COC_40HC'] ?? 0))),
+        'coc_danger' => ceil(floatval($is20GP ? ($data['OPASNYY_20DC'] ?? 0) : ($data['OPASNYY_40HC'] ?? 0))),
+        'soc_normal' => ceil(floatval($is20GP ? ($data['SOC_20GP'] ?? 0) : ($data['SOC_40HC'] ?? 0))),
+        'coc_40_normal' => ceil(floatval($data['COC_40HC'] ?? 0)),
+        'coc_40_danger' => ceil(floatval($data['OPASNYY_40HC'] ?? 0)),
+        'soc_40_normal' => ceil(floatval($data['SOC_40HC'] ?? 0)),
+        'drop_off_20' => ceil(floatval($data['DROP_OFF_20GP'] ?? 0)),
+        'drop_off_40' => ceil(floatval($data['DROP_OFF_40HC'] ?? 0))
+    ];
+}
+/**
+ * Создает элемент результата для морских перевозок
+ */
+private function createSeaResultItem($data, $containerType, $ownership, $hazardType, 
+                                     $cafPercent, $profit, $dropOffCost, 
+                                     $normalCost, $dangerCost, $socNormalCost = null): array {
+    
+    $isSOC = ($ownership === 'SOC');
+    $containerCost = $isSOC && $socNormalCost ? $socNormalCost : $normalCost;
+    
+    // Проверяем что базовая стоимость не нулевая
+    if (empty($containerCost) || floatval($containerCost) <= 0) {
+        return []; // Возвращаем пустой массив
+    }
+    
+    // Расчет для обычного груза
+    $nettoNormal = ceil($containerCost + $dropOffCost);
+    $totalNormal = ceil($nettoNormal * (1 + $cafPercent / 100) + $profit);
+    
+    $resultItem = [
+        'sea_pol' => $data['POL'] ?? '',
+        'sea_pod' => $data['POD'] ?? '',
+        'sea_drop_off_location' => $data['DROP_OFF_LOCATION'] ?? '',
+        'sea_coc' => $containerType,
+        'sea_container_ownership' => $ownership,
+        'sea_agent' => $data['AGENT'] ?? '',
+        'sea_remark' => $data['REMARK'] ?? '',
+        'sea_hazard' => $hazardType,
+        'sea_caf_percent' => $cafPercent,
+        'sea_profit' => $profit,
+        'cost_container_normal' => $containerCost,
+        'cost_netto_normal' => $nettoNormal,
+        'cost_total_normal' => $totalNormal,
+        'cost_drop_off' => $dropOffCost,
+        'show_both_ownership' => false,
+        'show_both_hazard_in_columns' => ($dangerCost > 0) // Показывать оба варианта опасности только если есть цена для опасного груза
+    ];
+    
+    // Добавляем расчет для опасного груза если цена указана
+    if (!empty($dangerCost) && floatval($dangerCost) > 0) {
+        $nettoDanger = ceil($dangerCost + $dropOffCost);
+        $totalDanger = ceil($nettoDanger * (1 + $cafPercent / 100) + $profit);
+        
+        $resultItem['cost_container_danger'] = $dangerCost;
+        $resultItem['cost_netto_danger'] = $nettoDanger;
+        $resultItem['cost_total_danger'] = $totalDanger;
+    }
+    
+    return $resultItem;
+}
+/**
  * Получаем ж/д маршруты для отображения
  *
  * @return [type]
@@ -2220,14 +2167,14 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                         'FIELDS'         => [
                             'NAME'         => trim((string)$row['A']),
                             'PROPERTY_142' => trim((string)$row['B']),
-                            'PROPERTY_166' => trim((string)$row['C']),
-                            'PROPERTY_168' => trim((string)$row['D']),
-                            'PROPERTY_170' => trim((string)$row['E']),
-                            'PROPERTY_172' => trim((string)$row['F']),
-                            'PROPERTY_174' => trim((string)$row['G']),
-                            'PROPERTY_176' => trim((string)$row['H']),
-                            'PROPERTY_178' => trim((string)$row['I']),
-                            'PROPERTY_180' => trim((string)$row['J']),
+                            'PROPERTY_166' => str_replace(',', '', trim((string)$row['C'])),
+                            'PROPERTY_168' => str_replace(',', '', trim((string)$row['D'])),
+                            'PROPERTY_170' => str_replace(',', '', trim((string)$row['E'])),
+                            'PROPERTY_172' => str_replace(',', '', trim((string)$row['F'])),
+                            'PROPERTY_174' => str_replace(',', '', trim((string)$row['G'])),
+                            'PROPERTY_176' => str_replace(',', '', trim((string)$row['H'])),
+                            'PROPERTY_178' => str_replace(',', '', trim((string)$row['I'])),
+                            'PROPERTY_180' => str_replace(',', '', trim((string)$row['J'])),
                             'PROPERTY_196' => trim((string)$row['K']), // agent
                         ],
                     ]);
@@ -2293,6 +2240,10 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                 }
 
                 $rows = $sheet->toArray(null, true, true, true);
+                echo json_encode(
+                ['result' => $rows],
+                JSON_UNESCAPED_UNICODE
+            );
             } catch (\Throwable $e) {
                 file_put_contents(__DIR__ . '/error.log', date('c') . " (Excel SEA) " . $e->getMessage() . "\n", FILE_APPEND | LOCK_EX);
                 http_response_code(500);
@@ -2337,17 +2288,21 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                         'IBLOCK_TYPE_ID' => 'lists',
                         'IBLOCK_ID'      => 28,
                         'ELEMENT_CODE'   => 'el_' . $idx . rand(1, 9999),
-                        'FIELDS'         => [
+                        'FIELDS' => [
                             'NAME'         => trim((string)$row['A']),  // Порт
                             'PROPERTY_126' => trim((string)$row['B']),
-                            'PROPERTY_162' => trim((string)$row['C']),
-                            'PROPERTY_164' => trim((string)$row['D']),
+                            'PROPERTY_162' => str_replace(',', '', trim((string)$row['C'])),
+                            'PROPERTY_164' => str_replace(',', '', trim((string)$row['D'])),
                             'PROPERTY_132' => trim((string)$row['E']),
-                            'PROPERTY_134' => trim((string)$row['F']),
-                            'PROPERTY_136' => trim((string)$row['G']),
+                            'PROPERTY_134' => str_replace(',', '', trim((string)$row['F'])),
+                            'PROPERTY_136' => str_replace(',', '', trim((string)$row['G'])),
                             'PROPERTY_138' => trim((string)$row['H']),
                             'PROPERTY_140' => trim((string)$row['I']),
                             'PROPERTY_192' => trim((string)$row['J']), // agent
+                            'PROPERTY_200' => str_replace(',', '', trim((string)$row['K'])),
+                            'PROPERTY_202' => str_replace(',', '', trim((string)$row['L'])),
+                            'PROPERTY_208' => str_replace(',', '', trim((string)$row['M'])),
+                            'PROPERTY_210' => str_replace(',', '', trim((string)$row['N'])),
                         ],
                     ]);
 
@@ -2558,13 +2513,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
         }
         return $row;
     }, $allElements);
-    
-    // Логируем общий результат
-    file_put_contents(__DIR__ . '/fetch_transport_data.log', 
-        "Total elements fetched: " . count($allElements) . PHP_EOL . 
-        "Total transformed: " . count($result) . PHP_EOL, 
-        FILE_APPEND | LOCK_EX);
-    
+
     return $result;
 }
 
