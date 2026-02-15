@@ -697,8 +697,9 @@ createApp({
         ]);
 
         const combCocTypes = ref([
-            { title: '20DC', value: '20DC' },
-            { title: '40HC', value: '40HC' }
+            { title: '20DC (<24t)', value: '20DC (<24t)' },
+            { title: '20DC (24t-28t)', value: '20DC (24t-28t)' },
+            { title: '40HC (28t)', value: '40HC (28t)' }
         ]);
 
         const hazardOptions = ref([
@@ -733,7 +734,7 @@ createApp({
             { title: 'Собственность контейнера', key: 'sea_container_ownership', sortable: true },
             { title: 'CAF (%)', key: 'sea_caf_percent', sortable: true },
             { title: 'Стоимость обычного груза, USD', key: 'cost_total_normal', sortable: true },
-            { title: 'Стоимость опасного груза, USD', key: 'cost_total_danger', sortable: true },
+            { title: 'Надбавка за опасный руз, USD', key: 'cost_total_danger', sortable: true },
             { title: 'Агент', key: 'sea_agent', sortable: true },
             { title: 'Примечание', key: 'sea_remark', sortable: true }
         ]);
@@ -745,7 +746,7 @@ createApp({
             { title: 'Собственность контейнера', key: 'rail_container_ownership', sortable: true },
             { title: 'Охрана', key: 'rail_security', sortable: true },
             { title: 'Стоимость обычного груза, RUB', key: 'cost_total_normal', sortable: true },
-            { title: 'Стоимость опасного груза, RUB', key: 'cost_total_danger', sortable: true },
+            { title: 'Надбавка за опасный руз, RUB', key: 'cost_total_danger', sortable: true },
             { title: 'Агент', key: 'rail_agent', sortable: true },
             { title: 'Комментарий', key: 'rail_remark', sortable: true },
         ]);
@@ -754,11 +755,13 @@ createApp({
             { title: 'Морской порт отправления', key: 'comb_sea_pol', sortable: true },
             { title: 'Морской порт прибытия', key: 'comb_sea_pod', sortable: true },
             { title: 'DROP OFF LOCATION', key: 'comb_drop_off', sortable: true },
+            { title: 'Станции отправления', key: 'comb_rail_start', sortable: true },
+            { title: 'Станции назначения', key: 'comb_rail_dest', sortable: true },
             { title: 'Тип контейнера', key: 'comb_coc', sortable: true },
             { title: 'Собственность контейнера', key: 'comb_container_ownership', sortable: true },
             { title: 'Охрана', key: 'comb_security', sortable: true },
             { title: 'Стоимость обычного груза, USD/RUB', key: 'cost_total_normal_text', sortable: true },
-            { title: 'Стоимость опасного груза, USD/RUB', key: 'cost_total_danger_text', sortable: true },
+            { title: 'Надбавка за опасный руз, USD/RUB', key: 'cost_total_danger_text', sortable: true },
             { title: 'Агент', key: 'comb_agent', sortable: true },
             { title: 'Комментарий', key: 'comb_remark', sortable: true }
         ]);
@@ -1025,7 +1028,7 @@ createApp({
                 });
 
                 const data = await response.json();
-                console.log(data);
+
                 if (data.error) {
                     showUploadMessage(data.message || 'Ошибка расчета', 'error');
                     return;
@@ -1111,7 +1114,7 @@ createApp({
                 });
 
                 const data = await response.json();
-                console.log(data);
+
                 if (data.error) {
                     showUploadMessage(data.message || 'Ошибка расчета', 'error');
                     return;
@@ -1170,8 +1173,7 @@ const loadAllDestinationsForPol = () => {
     
     // Получаем уникальные POD (порты прибытия в морских перевозках)
     const seaPods = [...new Set(combPerevozki.map(item => item.POL))];
-    console.log(seaPods);
-    console.log(combPerevozki);
+
     // Получаем ВСЕ пункты назначения из комбинированных перевозок,
     // где POL соответствует любому из найденных POD
     const allDestinations = [...new Set(
@@ -1184,7 +1186,6 @@ const loadAllDestinationsForPol = () => {
         title: dest, 
         value: dest 
     }));
-        console.log(combDestinations.value);
 };
 
 
@@ -1219,19 +1220,19 @@ const onCombDropOffChange = () => {
         combDestinations.value = [];
         return;
     }
-    
+
     // Получаем уникальные POD (порты прибытия в морских перевозках)
-    const seaPods = [...new Set(seaRecords.map(item => item.POD))];
-    
+    const seaPods = [...new Set(seaRecords.map(item => item.DROP_OFF_LOCATION))];
+
     // Получаем порты перевалки из комбинированных перевозок
     // Где POL в комбинированных перевозках соответствует POD из морских перевозок
     const transshipmentPoints = [...new Set(
         combPerevozki
-            .filter(item => seaPods.includes(item.POL))
+            .filter(item => seaPods.includes(item.PUNKT_NAZNACHENIYA))
             .map(item => item.PUNKT_OTPRAVLENIYA)
-            .filter(point => point && point.trim() !== '')
+            //.filter(point => point && point.trim() !== '')
     )];
-    
+
     transshipmentPorts.value = transshipmentPoints.map(point => ({ 
         title: point, 
         value: point 
@@ -1265,14 +1266,14 @@ const onTransshipmentPortChange = () => {
         
         // Получаем уникальные POD из морских перевозок
         const seaPods = [...new Set(seaRecords.map(item => item.POD))];
-        
+        console.log(combPerevozki);
         // Получаем пункты назначения из комбинированных перевозок где:
         // 1. POL = POD из морских перевозок
         // 2. PUNKT_OTPRAVLENIYA = выбранный порт перевалки
         const destinations = [...new Set(
             combPerevozki
                 .filter(item => 
-                    seaPods.includes(item.POL) && 
+                    //seaPods.includes(item.POL) && 
                     item.PUNKT_OTPRAVLENIYA === selectedTransshipment
                 )
                 .map(item => item.PUNKT_NAZNACHENIYA)
@@ -1492,7 +1493,7 @@ const exportToExcel = async (type) => {
                 updateProgress(70, 'Обработка файла на сервере...');
                 
                 const text = await response.text();
-                console.log(text);
+
                 let payload;
                 try {
                     payload = text ? JSON.parse(text) : {};
