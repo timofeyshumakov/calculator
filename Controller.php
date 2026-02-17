@@ -30,12 +30,9 @@ class TransportationCalculatorController
         'PROPERTY_212' => 'COC_20DC_24T',
         'PROPERTY_214' => 'COC_DC_24T_28T',
         'PROPERTY_216' => 'COC_HC_28T',
-        'PROPERTY_168' => 'OPASNYY_20DC_24T_COC',
-        'PROPERTY_172' => 'OPASNYY_20DC_24T_28T_COC',
-        'PROPERTY_176' => 'OPASNYY_40HC_28T_COC',
-        'PROPERTY_222' => 'OPASNYY_20DC_24T_SOC',
-        'PROPERTY_224' => 'OPASNYY_20DC_24T_28T_SOC',
-        'PROPERTY_226' => 'OPASNYY_40HC_28T_SOC',
+        'PROPERTY_168' => 'OPASNYY_20DC_24T',
+        'PROPERTY_172' => 'OPASNYY_20DC_24T_28T',
+        'PROPERTY_176' => 'OPASNYY_40HC_28T',
     ];
 
     // маппинг полей морских перевозок
@@ -54,10 +51,8 @@ class TransportationCalculatorController
         'PROPERTY_200' => 'SOC_40HC',
         'PROPERTY_204' => 'OKHRANA_20_FUT',
         'PROPERTY_206' => 'OKHRANA_40_FUT',
-        'PROPERTY_208' => 'OPASNYY_20GP_COC',
-        'PROPERTY_210' => 'OPASNYY_40HC_COC',
-        'PROPERTY_218' => 'OPASNYY_20GP_SOC',
-        'PROPERTY_220' => 'OPASNYY_40HC_SOC',
+        'PROPERTY_208' => 'OPASNYY_20GP',
+        'PROPERTY_210' => 'OPASNYY_40HC',
     ];
 
     // маппинг комбинированных перевозок
@@ -873,31 +868,28 @@ public function getSeaPerevozki() {
                 if ($showBothOwnership) {
                     // Проверяем наличие цены для COC (обычный и опасный)
                     $hasCOCNormalCost = !empty($costs['coc_normal']) && floatval($costs['coc_normal']) > 0;
-                    $hasCOCDangerCost = !empty($costs['coc_danger']) && floatval($costs['coc_danger']) > 0;
+                    $hasDangerCost = !empty($costs['danger']) && floatval($costs['danger']) > 0;
                     $hasSOCNormalCost = !empty($costs['soc_normal']) && floatval($costs['soc_normal']) > 0;
-                    $hasSOCDangerCost = !empty($costs['soc_danger']) && floatval($costs['soc_danger']) > 0;
-                    
-                    // Добавляем COC вариант ТОЛЬКО если есть хотя бы одна стоимость
-                    if ($hasCOCNormalCost || $hasCOCDangerCost) {
+
+                    if ($hasCOCNormalCost) {
                         $cocResult = $this->createSeaResultItem(
                             $value, $cType, 'COC', 'Оба варианта', 
                             $actualCafPercent, $profit, $dropOffCost,
                             $hasCOCNormalCost ? $costs['coc_normal'] : '-', 
-                            $hasCOCDangerCost ? $costs['coc_danger'] : '-'
+                            $hasDangerCost ? $costs['danger'] : '-'
                         );
                         
                         if (!empty($cocResult)) {
                             $result[] = $cocResult;
                         }
                     }
-                    
-                    // Добавляем SOC вариант ТОЛЬКО если есть хотя бы одна стоимость
-                    if ($hasSOCNormalCost || $hasCOCDangerCost) {
+
+                    if ($hasSOCNormalCost) {
                         $socResult = $this->createSeaResultItem(
                             $value, $cType, 'SOC', 'Оба варианта',
                             $actualCafPercent, $profit, $dropOffCost,
                             $hasSOCNormalCost ? $costs['soc_normal'] : '-', 
-                            $hasSOCDangerCost ? $costs['soc_danger'] : '-'
+                            $hasDangerCost ? $costs['danger'] : '-'
                         );
                         
                         if (!empty($socResult)) {
@@ -917,19 +909,18 @@ public function getSeaPerevozki() {
                     if ($containerOwnership === 'coc') {
                         $containerCost = $is20GP ? $costs['coc_normal'] : $costs['coc_40_normal'];
                         $hasContainerCost = !empty($containerCost) && floatval($containerCost) > 0;
-                        $dangerCost = $is20GP ? $costs['coc_danger'] : $costs['coc_40_danger'];
+                        $dangerCost = $is20GP ? $costs['danger'] : $costs['40_danger'];
                         $hasDangerCost = !empty($dangerCost) && floatval($dangerCost) > 0;
                     } else {
                         $containerCost = $is20GP ? $costs['soc_normal'] : $costs['soc_40_normal'];
                         $hasContainerCost = !empty($containerCost) && floatval($containerCost) > 0;
-                        // Для SOC опасный груз используем COC стоимость
-                        $dangerCost = $is20GP ? $costs['soc_danger'] : $costs['soc_40_danger'];
+                        $dangerCost = $is20GP ? $costs['danger'] : $costs['40_danger'];
                         $hasDangerCost = !empty($dangerCost) && floatval($dangerCost) > 0;
                     }
                     
                     if (!$isHazard) {
                         // Обычный груз - показываем оба варианта опасности ТОЛЬКО если есть хотя бы одна стоимость
-                        if ($hasContainerCost || $hasDangerCost) {
+                        if ($hasContainerCost) {
                             $normalResult = $this->createSeaResultItem(
                                 $value, $cType, $selectedType, 'Нет',
                                 $actualCafPercent, $profit, $dropOffCost,
@@ -986,19 +977,16 @@ public function getSeaPerevozki() {
 private function getSeaCosts($data, $is20GP): array {
     
     $coc_normal = $is20GP ? ($data['COC_20GP'] ?? 0) : ($data['COC_40HC'] ?? 0);
-    $coc_danger = $is20GP ? ($data['OPASNYY_20GP_COC'] ?? 0) : ($data['OPASNYY_40HC_COC'] ?? 0);
+    $danger = $is20GP ? ($data['OPASNYY_20GP'] ?? 0) : ($data['OPASNYY_40HC'] ?? 0);
     $soc_normal = $is20GP ? ($data['SOC_20GP'] ?? 0) : ($data['SOC_40HC'] ?? 0);
-    $soc_danger = $is20GP ? ($data['OPASNYY_20GP_SOC'] ?? 0) : ($data['OPASNYY_40HC_SOC'] ?? 0);
 
     return [
         'coc_normal' => !empty($coc_normal) && floatval($coc_normal) > 0 ? ceil(floatval($coc_normal)) : 0,
-        'coc_danger' => !empty($coc_danger) && floatval($coc_danger) > 0 ? ceil(floatval($coc_danger)) : 0,
         'soc_normal' => !empty($soc_normal) && floatval($soc_normal) > 0 ? ceil(floatval($soc_normal)) : 0,
-        'soc_danger' => !empty($soc_danger) && floatval($soc_danger) > 0 ? ceil(floatval($soc_danger)) : 0,
+        'danger' => !empty($danger) && floatval($danger) > 0 ? ceil(floatval($danger)) : 0,
         'coc_40_normal' => !empty($data['COC_40HC']) && floatval($data['COC_40HC']) > 0 ? ceil(floatval($data['COC_40HC'])) : 0,
-        'coc_40_danger' => !empty($data['OPASNYY_40HC_COC']) && floatval($data['OPASNYY_40HC_COC']) > 0 ? ceil(floatval($data['OPASNYY_40HC_COC'])) : 0,
+        '40_danger' => !empty($data['OPASNYY_40HC']) && floatval($data['OPASNYY_40HC']) > 0 ? ceil(floatval($data['OPASNYY_40HC'])) : 0,
         'soc_40_normal' => !empty($data['SOC_40HC']) && floatval($data['SOC_40HC']) > 0 ? ceil(floatval($data['SOC_40HC'])) : 0,
-        'soc_40_danger' => !empty($data['OPASNYY_40HC_SOC']) && floatval($data['OPASNYY_40HC_SOC']) > 0 ? ceil(floatval($data['OPASNYY_40HC_SOC'])) : 0,
         'drop_off_20' => !empty($data['DROP_OFF_20GP']) && floatval($data['DROP_OFF_20GP']) > 0 ? ceil(floatval($data['DROP_OFF_20GP'])) : 0,
         'drop_off_40' => !empty($data['DROP_OFF_40HC']) && floatval($data['DROP_OFF_40HC']) > 0 ? ceil(floatval($data['DROP_OFF_40HC'])) : 0
     ];
@@ -1324,15 +1312,12 @@ private function createEmptyRailResultItem($data, $containerType, $ownership, $h
             switch ($containerType) {
                 case '20DC (<24t)':
                 case '20DC':
-                    $key = $ownership === 'soc' ? 'OPASNYY_20DC_24T_SOC' : 'OPASNYY_20DC_24T_COC';
-                    return ceil(floatval($data[$key] ?? 0));
+                    return ceil(floatval($data['OPASNYY_20DC_24T'] ?? 0));
                 case '20DC (24t-28t)':
-                    $key = $ownership === 'soc' ? 'OPASNYY_20DC_24T_28T_SOC' : 'OPASNYY_20DC_24T_28T_COC';
-                    return ceil(floatval($data[$key] ?? 0));
+                    return ceil(floatval($data['OPASNYY_20DC_24T_28T'] ?? 0));
                 case '40HC (28t)':
                 case '40HC':
-                    $key = $ownership === 'soc' ? 'OPASNYY_40HC_28T_SOC' : 'OPASNYY_40HC_28T_COC';
-                    return ceil(floatval($data[$key] ?? 0));
+                    return ceil(floatval($data['OPASNYY_40HC_28T'] ?? 0));
                 default:
                     return 0;
             }
@@ -2404,15 +2389,18 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                             'PROPERTY_212' => str_replace(',', '', trim((string)$row['C'])),
                             'PROPERTY_166' => str_replace(',', '', trim((string)$row['D'])),
                             'PROPERTY_168' => str_replace(',', '', trim((string)$row['E'])),
-                            'PROPERTY_214' => str_replace(',', '', trim((string)$row['F'])),
-                            'PROPERTY_170' => str_replace(',', '', trim((string)$row['G'])),
-                            'PROPERTY_172' => str_replace(',', '', trim((string)$row['H'])),
-                            'PROPERTY_216' => str_replace(',', '', trim((string)$row['I'])),
-                            'PROPERTY_174' => str_replace(',', '', trim((string)$row['J'])),
-                            'PROPERTY_176' => str_replace(',', '', trim((string)$row['K'])),
-                            'PROPERTY_178' => str_replace(',', '', trim((string)$row['L'])),
-                            'PROPERTY_180' => str_replace(',', '', trim((string)$row['M'])),
-                            'PROPERTY_196' => trim((string)$row['N']), // agent
+                            'PROPERTY_222' => str_replace(',', '', trim((string)$row['F'])),
+                            'PROPERTY_214' => str_replace(',', '', trim((string)$row['G'])),
+                            'PROPERTY_170' => str_replace(',', '', trim((string)$row['H'])),
+                            'PROPERTY_172' => str_replace(',', '', trim((string)$row['I'])),
+                            'PROPERTY_224' => str_replace(',', '', trim((string)$row['J'])),
+                            'PROPERTY_216' => str_replace(',', '', trim((string)$row['K'])),
+                            'PROPERTY_174' => str_replace(',', '', trim((string)$row['L'])),
+                            'PROPERTY_176' => str_replace(',', '', trim((string)$row['M'])),
+                            'PROPERTY_226' => str_replace(',', '', trim((string)$row['N'])),
+                            'PROPERTY_178' => str_replace(',', '', trim((string)$row['O'])),
+                            'PROPERTY_180' => str_replace(',', '', trim((string)$row['P'])),
+                            'PROPERTY_196' => trim((string)$row['Q']), // agent
                         ],
                     ]);
 
@@ -2540,6 +2528,8 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                             'PROPERTY_200' => str_replace(',', '', trim((string)$row['L'])),
                             'PROPERTY_208' => str_replace(',', '', trim((string)$row['M'])),
                             'PROPERTY_210' => str_replace(',', '', trim((string)$row['N'])),
+                            'PROPERTY_218' => str_replace(',', '', trim((string)$row['O'])),
+                            'PROPERTY_220' => str_replace(',', '', trim((string)$row['P'])),
                         ],
                     ]);
 

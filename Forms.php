@@ -734,7 +734,7 @@ createApp({
             { title: 'Собственность контейнера', key: 'sea_container_ownership', sortable: true },
             { title: 'CAF (%)', key: 'sea_caf_percent', sortable: true },
             { title: 'Стоимость обычного груза, USD', key: 'cost_total_normal', sortable: true },
-            { title: 'Надбавка за опасный руз, USD', key: 'cost_total_danger', sortable: true },
+            { title: 'Надбавка за опасный груз, USD', key: 'cost_total_danger', sortable: true },
             { title: 'Агент', key: 'sea_agent', sortable: true },
             { title: 'Примечание', key: 'sea_remark', sortable: true }
         ]);
@@ -746,7 +746,7 @@ createApp({
             { title: 'Собственность контейнера', key: 'rail_container_ownership', sortable: true },
             { title: 'Охрана', key: 'rail_security', sortable: true },
             { title: 'Стоимость обычного груза, RUB', key: 'cost_total_normal', sortable: true },
-            { title: 'Надбавка за опасный руз, RUB', key: 'cost_total_danger', sortable: true },
+            { title: 'Надбавка за опасный груз, RUB', key: 'cost_total_danger', sortable: true },
             { title: 'Агент', key: 'rail_agent', sortable: true },
             { title: 'Комментарий', key: 'rail_remark', sortable: true },
         ]);
@@ -761,7 +761,7 @@ createApp({
             { title: 'Собственность контейнера', key: 'comb_container_ownership', sortable: true },
             { title: 'Охрана', key: 'comb_security', sortable: true },
             { title: 'Стоимость обычного груза, USD/RUB', key: 'cost_total_normal_text', sortable: true },
-            { title: 'Надбавка за опасный руз, USD/RUB', key: 'cost_total_danger_text', sortable: true },
+            { title: 'Надбавка за опасный груз, USD/RUB', key: 'cost_total_danger_text', sortable: true },
             { title: 'Агент', key: 'comb_agent', sortable: true },
             { title: 'Комментарий', key: 'comb_remark', sortable: true }
         ]);
