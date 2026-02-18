@@ -1149,7 +1149,7 @@ public function getRailPerevozki() {
                         
                         // Опасный груз
                         'cost_base_danger' => $dangerCostCOC > 0 ? $dangerCostCOC : '-',
-                        'cost_total_danger' => $dangerCostCOC > 0 ? ceil($dangerCostCOC + $securityCost + $profit) : '-',
+                        'cost_total_danger' => $dangerCostCOC > 0 ? ceil($dangerCostCOC) : '-',
                         
                         // Общие поля
                         'cost_security' => $securityCost,
@@ -1223,7 +1223,7 @@ public function getRailPerevozki() {
                             
                             // Опасный груз
                             'cost_base_danger' => $dangerCost > 0 ? $dangerCost : '-',
-                            'cost_total_danger' => $dangerCost > 0 ? ceil($dangerCost + $securityCost + $profit) : '-',
+                            'cost_total_danger' => $dangerCost > 0 ? ceil($dangerCost) : '-',
                             
                             // Общие поля
                             'cost_security' => $securityCost,
@@ -1832,7 +1832,7 @@ private function addCombinedRowsForBothOwnership(
         if ($hasSeaCost || $hasRailCost) {
             // Итоговые стоимости ЖД
             $costRailNormal = $hasRailNormal ? ceil($railCostNormal + $securityCostRail + $railProfit) : '-';
-            $costRailDanger = $hasRailDanger ? ceil($railCostDanger + $securityCostRail + $railProfit) : '-';
+            $costRailDanger = $hasRailDanger ? ceil($railCostDanger) : '-';
             
             // Морская часть - обычный груз
             $seaResultNormal = $this->createSeaResultItemForCombined(
@@ -1979,7 +1979,7 @@ private function addCombinedRowsForSingleOwnership(
         if ($hasSeaCost || $hasRailCost) {
             // Итоговые стоимости ЖД
             $costRailNormal = $hasRailNormal ? ceil($railCostNormal + $securityCostRail + $railProfit) : '-';
-            $costRailDanger = $hasRailDanger ? ceil($railCostDanger + $securityCostRail + $railProfit) : '-';
+            $costRailDanger = $hasRailDanger ? ceil($railCostDanger) : '-';
             
             // Морская часть для обычного груза
             $seaResult = $this->createSeaResultItemForCombined(
@@ -2092,7 +2092,7 @@ private function addCombinedRowsForSingleOwnership(
             $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $railContainerType);
             
             // Итоговая стоимость ЖД
-            $costRailDanger = $hasRailDanger ? ceil($railCostDanger + $securityCostRail + $railProfit) : '-';
+            $costRailDanger = $hasRailDanger ? ceil($railCostDanger) : '-';
             
             // Формируем текстовое значение итоговой стоимости с прочерками при отсутствии данных
             $costTotalText = '';
@@ -2387,20 +2387,17 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                             'NAME'         => trim((string)$row['A']),
                             'PROPERTY_142' => trim((string)$row['B']),
                             'PROPERTY_212' => str_replace(',', '', trim((string)$row['C'])),
-                            'PROPERTY_166' => str_replace(',', '', trim((string)$row['D'])),
-                            'PROPERTY_168' => str_replace(',', '', trim((string)$row['E'])),
-                            'PROPERTY_222' => str_replace(',', '', trim((string)$row['F'])),
-                            'PROPERTY_214' => str_replace(',', '', trim((string)$row['G'])),
-                            'PROPERTY_170' => str_replace(',', '', trim((string)$row['H'])),
-                            'PROPERTY_172' => str_replace(',', '', trim((string)$row['I'])),
-                            'PROPERTY_224' => str_replace(',', '', trim((string)$row['J'])),
-                            'PROPERTY_216' => str_replace(',', '', trim((string)$row['K'])),
-                            'PROPERTY_174' => str_replace(',', '', trim((string)$row['L'])),
-                            'PROPERTY_176' => str_replace(',', '', trim((string)$row['M'])),
-                            'PROPERTY_226' => str_replace(',', '', trim((string)$row['N'])),
-                            'PROPERTY_178' => str_replace(',', '', trim((string)$row['O'])),
-                            'PROPERTY_180' => str_replace(',', '', trim((string)$row['P'])),
-                            'PROPERTY_196' => trim((string)$row['Q']), // agent
+                            'PROPERTY_214' => str_replace(',', '', trim((string)$row['D'])),
+                            'PROPERTY_216' => str_replace(',', '', trim((string)$row['E'])),
+                            'PROPERTY_166' => str_replace(',', '', trim((string)$row['F'])),
+                            'PROPERTY_170' => str_replace(',', '', trim((string)$row['G'])),
+                            'PROPERTY_174' => str_replace(',', '', trim((string)$row['H'])),
+                            'PROPERTY_168' => str_replace(',', '', trim((string)$row['I'])),
+                            'PROPERTY_172' => str_replace(',', '', trim((string)$row['J'])),
+                            'PROPERTY_176' => str_replace(',', '', trim((string)$row['K'])),
+                            'PROPERTY_178' => str_replace(',', '', trim((string)$row['L'])),
+                            'PROPERTY_180' => str_replace(',', '', trim((string)$row['M'])),
+                            'PROPERTY_196' => trim((string)$row['N']),
                         ],
                     ]);
 
@@ -2483,7 +2480,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
             }
 
             $headerRow = $rows[1];
-            $cols = ['A','B','C','D','E','F','G','H','I','J']; // до J включительно
+            $cols = ['A','B','C','D','E','F','G','H','I','J', 'K', 'L', 'M', 'N']; // до J включительно
             $added = 0;
             $errors = [];
 
@@ -2518,18 +2515,17 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                             'PROPERTY_126' => trim((string)$row['B']),
                             'PROPERTY_162' => str_replace(',', '', trim((string)$row['C'])),
                             'PROPERTY_164' => str_replace(',', '', trim((string)$row['D'])),
-                            'PROPERTY_132' => trim((string)$row['E']),
-                            'PROPERTY_134' => str_replace(',', '', trim((string)$row['F'])),
-                            'PROPERTY_136' => str_replace(',', '', trim((string)$row['G'])),
-                            'PROPERTY_138' => trim((string)$row['H']),
-                            'PROPERTY_140' => trim((string)$row['I']),
-                            'PROPERTY_192' => trim((string)$row['J']), // agent
-                            'PROPERTY_202' => str_replace(',', '', trim((string)$row['K'])),
-                            'PROPERTY_200' => str_replace(',', '', trim((string)$row['L'])),
-                            'PROPERTY_208' => str_replace(',', '', trim((string)$row['M'])),
-                            'PROPERTY_210' => str_replace(',', '', trim((string)$row['N'])),
-                            'PROPERTY_218' => str_replace(',', '', trim((string)$row['O'])),
-                            'PROPERTY_220' => str_replace(',', '', trim((string)$row['P'])),
+                            'PROPERTY_202' => str_replace(',', '', trim((string)$row['E'])),
+                            'PROPERTY_204' => str_replace(',', '', trim((string)$row['F'])),
+                            'PROPERTY_208' => str_replace(',', '', trim((string)$row['G'])),
+                            'PROPERTY_210' => str_replace(',', '', trim((string)$row['H'])),
+                            'PROPERTY_132' => trim((string)$row['I']),
+                            'PROPERTY_134' => str_replace(',', '', trim((string)$row['J'])),
+                            'PROPERTY_136' => str_replace(',', '', trim((string)$row['K'])),
+                            'PROPERTY_138' => trim((string)$row['L']),
+                            'PROPERTY_140' => trim((string)$row['M']),
+                            'PROPERTY_192' => trim((string)$row['N']), // agent
+
                         ],
                     ]);
 
