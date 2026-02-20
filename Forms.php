@@ -221,17 +221,6 @@ $combStartsForVue = array_values($combStarts);
                                 </v-col>
                                 <v-col cols="12" md="4">
                                     <v-text-field
-                                        v-model="seaForm.caf"
-                                        label="% CAF (конверт)"
-                                        type="number"
-                                        step="0.5"
-                                        :disabled="seaFormDisabled.caf"
-                                        variant="outlined"
-                                        @input="updateSeaCosts"
-                                    ></v-text-field>
-                                </v-col>
-                                <v-col cols="12" md="4">
-                                    <v-text-field
                                         v-model="seaForm.profit"
                                         label="Profit (Море, $)"
                                         type="number"
@@ -474,18 +463,6 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                         :return-object="false"
                                         :disabled="combFormDisabled.containerOwnership"
-                                    ></v-select>
-                                </v-col>
-                                <v-col cols="12" md="4">
-                                    <v-select
-                                        v-model="combForm.hazard"
-                                        label="Опасный груз?"
-                                        :items="hazardOptions"
-                                        variant="outlined"
-                                        item-title="title"
-                                        item-value="value"
-                                        :return-object="false"
-                                        :disabled="combFormDisabled.hazard"
                                     ></v-select>
                                 </v-col>
                                 <v-col cols="12" md="6">
@@ -1221,17 +1198,28 @@ const onCombDropOffChange = () => {
         return;
     }
 
-    // Получаем уникальные POD (порты прибытия в морских перевозках)
-    const seaPods = [...new Set(seaRecords.map(item => item.DROP_OFF_LOCATION))];
+const seaPods = [...new Set(seaRecords
+    .map(item => item.DROP_OFF_LOCATION?.trim().toUpperCase())
+    .filter(Boolean)
+)];
 
-    // Получаем порты перевалки из комбинированных перевозок
-    // Где POL в комбинированных перевозках соответствует POD из морских перевозок
-    const transshipmentPoints = [...new Set(
-        combPerevozki
-            .filter(item => seaPods.includes(item.PUNKT_NAZNACHENIYA))
-            .map(item => item.PUNKT_OTPRAVLENIYA)
-            //.filter(point => point && point.trim() !== '')
-    )];
+console.log('Морские порты назначения (нормализованные):', seaPods);
+console.log('combPerevozki:', combPerevozki);
+console.log('seaRecords:', seaRecords);
+
+// Получаем порты перевалки из комбинированных перевозок
+// Где POL в комбинированных перевозках соответствует POD из морских перевозок
+const transshipmentPoints = [...new Set(
+    combPerevozki
+        .filter(item => {
+            const destination = item.PUNKT_NAZNACHENIYA?.trim().toUpperCase();
+            return destination && seaPods.includes(destination);
+        })
+        .map(item => item.PUNKT_OTPRAVLENIYA?.trim())
+        .filter(point => point && point !== '')
+)];
+
+console.log('Точки перевалки (нормализованные):', transshipmentPoints);
 
     transshipmentPorts.value = transshipmentPoints.map(point => ({ 
         title: point, 
