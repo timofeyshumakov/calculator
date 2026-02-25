@@ -1967,8 +1967,8 @@ private function addCombinedRowsForSingleOwnership(
         $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $railContainerType);
         
         // Проверяем наличие хотя бы одной стоимости
-        $hasSeaCost = $seaCosts['normal'] > 0 || $seaCosts['danger'] > 0;
-        $hasRailCost = $hasRailNormal || $hasRailDanger;
+        $hasSeaCost = $seaCosts['normal'] > 0;
+        $hasRailCost = $hasRailNormal;
 
         if ($hasSeaCost && $hasRailCost) {
             // Итоговые стоимости ЖД
@@ -2008,12 +2008,8 @@ private function addCombinedRowsForSingleOwnership(
             $costTotalDangerText = '';
             if ($seaTotalDanger !== '-' && $costRailDanger !== '-') {
                 $costTotalDangerText = $seaTotalDanger . '$ + ' . $costRailDanger . ' руб';
-            } elseif ($seaTotalDanger === '-' && $costRailDanger === '-') {
-                $costTotalDangerText = '-';
-            } elseif ($seaTotalDanger === '-') {
-                $costTotalDangerText = '- (море) + ' . $costRailDanger . ' руб (жд)';
             } else {
-                $costTotalDangerText = $seaTotalDanger . '$ (море) + - (жд)';
+                $costTotalDangerText = '-';
             }
             
             // Собираем итоговый ряд
