@@ -1470,10 +1470,10 @@ private function getSeaCostsForOwnership($data, $seaContainerType, $ownershipTyp
     
     if ($ownershipType === 'coc') {
         $normal = $is20GP ? ($data['COC_20GP'] ?? 0) : ($data['COC_40HC'] ?? 0);
-        $danger = $is20GP ? ($data['OPASNYY_20GP_COC'] ?? 0) : ($data['OPASNYY_40HC_COC'] ?? 0);
+        $danger = $is20GP ? ($data['OPASNYY_20GP'] ?? 0) : ($data['OPASNYY_40HC'] ?? 0);
     } else { // soc
         $normal = $is20GP ? ($data['SOC_20GP'] ?? 0) : ($data['SOC_40HC'] ?? 0);
-        $danger = $is20GP ? ($data['OPASNYY_20GP_SOC'] ?? 0) : ($data['OPASNYY_40HC_SOC'] ?? 0);
+        $danger = $is20GP ? ($data['OPASNYY_20GP'] ?? 0) : ($data['OPASNYY_40HC'] ?? 0);
     }
     
     return [
@@ -1825,11 +1825,10 @@ private function addCombinedRowsForBothOwnership(
         $securityCostRail = $this->getSecurityCostForContainerType($railValue, $security, $railContainerType);
         
         // Проверяем наличие хотя бы одной стоимости
-        $hasSeaCost = $seaCosts['normal'] > 0 || $seaCosts['danger'] > 0;
+        $hasSeaCost = $seaCosts['normal'] > 0;
         $hasRailCost = $hasRailNormal || $hasRailDanger;
-        
-        // Добавляем ряд ТОЛЬКО если есть хотя бы одна стоимость в морской ИЛИ ж/д части
-        if ($hasSeaCost || $hasRailCost) {
+
+        if ($hasSeaCost && $hasRailCost) {
             // Итоговые стоимости ЖД
             $costRailNormal = $hasRailNormal ? ceil($railCostNormal + $securityCostRail + $railProfit) : '-';
             $costRailDanger = $hasRailDanger ? ceil($railCostDanger) : '-';
@@ -1874,14 +1873,10 @@ private function addCombinedRowsForBothOwnership(
             $costTotalDangerText = '';
             if ($seaTotalDanger !== '-' && $costRailDanger !== '-') {
                 $costTotalDangerText = $seaTotalDanger . '$ + ' . $costRailDanger . ' руб';
-            } elseif ($seaTotalDanger === '-' && $costRailDanger === '-') {
-                $costTotalDangerText = '-';
-            } elseif ($seaTotalDanger === '-') {
-                $costTotalDangerText = '- (море) + ' . $costRailDanger . ' руб (жд)';
             } else {
-                $costTotalDangerText = $seaTotalDanger . '$ (море) + - (жд)';
+                $costTotalDangerText = '-';
             }
-            
+
             // Собираем итоговый ряд
             $resultItem = [
                 'comb_sea_pol' => $seaValue['POL'] ?? '',
@@ -1974,9 +1969,8 @@ private function addCombinedRowsForSingleOwnership(
         // Проверяем наличие хотя бы одной стоимости
         $hasSeaCost = $seaCosts['normal'] > 0 || $seaCosts['danger'] > 0;
         $hasRailCost = $hasRailNormal || $hasRailDanger;
-        
-        // Добавляем ряд ТОЛЬКО если есть хотя бы одна стоимость в морской ИЛИ ж/д части
-        if ($hasSeaCost || $hasRailCost) {
+
+        if ($hasSeaCost && $hasRailCost) {
             // Итоговые стоимости ЖД
             $costRailNormal = $hasRailNormal ? ceil($railCostNormal + $securityCostRail + $railProfit) : '-';
             $costRailDanger = $hasRailDanger ? ceil($railCostDanger) : '-';

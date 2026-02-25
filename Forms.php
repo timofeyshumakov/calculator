@@ -137,14 +137,14 @@ $combStartsForVue = array_values($combStarts);
                     <!-- Выбор типа расчета -->
                     <v-row class="mb-6">
                         <v-col cols="12">
-                            <v-select
+                            <v-autocomplete
                                 v-model="calcType"
                                 label="Выберите тип расчёта"
                                 :items="calcTypes"
                                 variant="outlined"
                                 required
                                 @update:model-value="onCalcTypeChange"
-                            ></v-select>
+                            ></v-autocomplete>
                         </v-col>
                     </v-row>
 
@@ -156,7 +156,7 @@ $combStartsForVue = array_values($combStarts);
                         <v-card-text>
                             <v-row>
                                 <v-col cols="12" md="6">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="seaForm.pol"
                                         label="POL (Порт отправления)"
                                         :items="seaPorts"
@@ -165,10 +165,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="6">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="seaForm.pod"
                                         label="POD (Порт прибытия)"
                                         :items="seaPods"
@@ -178,10 +178,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="3">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="seaForm.coc"
                                         label="ТИП КОНТЕЙНЕРА"
                                         :items="seaCocTypes"
@@ -191,10 +191,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="6">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="seaForm.dropOffLocation"
                                         label="DROP OFF LOCATION"
                                         :items="seaDropOffLocations"
@@ -204,10 +204,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="3">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="seaForm.containerOwnership"
                                         label="СОБСТВЕННОСТЬ КОНТЕЙНЕРА"
                                         :items="ownershipOptions"
@@ -217,7 +217,7 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
                                     <v-text-field
@@ -276,7 +276,7 @@ $combStartsForVue = array_values($combStarts);
                         <v-card-text>
                             <v-row>
                                 <v-col cols="12" md="6">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="railForm.origin"
                                         label="Станция отправления"
                                         :items="zhdStarts"
@@ -285,10 +285,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="6">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="railForm.destination"
                                         label="Станция назначения"
                                         :items="railDestinations"
@@ -298,10 +298,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="railForm.coc"
                                         label="ТИП КОНТЕЙНЕРА"
                                         :items="railCocTypes"
@@ -310,10 +310,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="3">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="railForm.containerOwnership"
                                         label="СОБСТВЕННОСТЬ КОНТЕЙНЕРА"
                                         :items="ownershipOptions"
@@ -322,10 +322,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                         :return-object="false"
                                         :disabled="railFormDisabled.containerOwnership"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="3">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="railForm.security"
                                         label="Охрана"
                                         :items="securityOptions"
@@ -334,7 +334,7 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
                                     <v-text-field
@@ -392,7 +392,7 @@ $combStartsForVue = array_values($combStarts);
                         <v-card-text>
                             <v-row>
                                 <v-col cols="12" md="4">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.seaPol"
                                         label="POL (Порт отправления)"
                                         :items="combStarts"
@@ -401,10 +401,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.dropOff"
                                         label="DROP OFF"
                                         :items="combDropOffs"
@@ -414,10 +414,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.destination"
                                         label="ПУНКТ НАЗНАЧЕНИЯ"
                                         :items="combDestinations"
@@ -425,10 +425,10 @@ $combStartsForVue = array_values($combStarts);
                                         :disabled="combFormDisabled.destination"
                                         item-title="title"
                                         item-value="value"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="5">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.transshipmentPort"
                                         label="ПОРТ ПЕРЕВАЛКИ"
                                         :items="transshipmentPorts"
@@ -439,10 +439,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                         :return-object="false"
                                         clearable
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.coc"
                                         label="ТИП КОНТЕЙНЕРА"
                                         :items="combCocTypes"
@@ -451,10 +451,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-title="title"
                                         item-value="value"
                                         :return-object="false"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="3">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.containerOwnership"
                                         label="СОБСТВЕННОСТЬ КОНТЕЙНЕРА"
                                         :items="ownershipOptions"
@@ -463,10 +463,10 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                         :return-object="false"
                                         :disabled="combFormDisabled.containerOwnership"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="6">
-                                    <v-select
+                                    <v-autocomplete
                                         v-model="combForm.security"
                                         label="Охрана"
                                         :items="combSecurityOptions"
@@ -475,7 +475,7 @@ $combStartsForVue = array_values($combStarts);
                                         item-value="value"
                                         :return-object="false"
                                         :disabled="combFormDisabled.security"
-                                    ></v-select>
+                                    ></v-autocomplete>
                                 </v-col>
                                 <v-col cols="12" md="4">
                                     <v-text-field
@@ -1305,11 +1305,12 @@ const calculateCombined = async () => {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams(payload)
         });
-
+        console.log(response);
         const data = await response.json();
         
         if (data.error) {
             showUploadMessage(data.message || 'Ошибка расчета', 'error');
+            combResults.value = [];
             return;
         }
 
