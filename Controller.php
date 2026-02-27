@@ -878,7 +878,7 @@ public function getSeaPerevozki() {
                             $hasCOCNormalCost ? $costs['coc_normal'] : '-', 
                             $hasDangerCost ? $costs['danger'] : '-'
                         );
-                        
+
                         if (!empty($cocResult)) {
                             $result[] = $cocResult;
                         }
@@ -1129,7 +1129,7 @@ public function getRailPerevozki() {
                 // Проверяем стоимость для COC
                 $normalCostCOC = $this->getRailCostForContainerType($cocType, $value, false, 'coc');
                 $dangerCostCOC = $this->getRailCostForContainerType($cocType, $value, true, 'coc');
-                $hasCostCOC = $normalCostCOC > 0 || $dangerCostCOC > 0;
+                $hasCostCOC = $normalCostCOC > 0;
                 
                 // Добавляем ряд для COC ТОЛЬКО если есть хотя бы одна стоимость
                 if ($hasCostCOC) {
@@ -1162,7 +1162,7 @@ public function getRailPerevozki() {
                 // Проверяем стоимость для SOC
                 $normalCostSOC = $this->getRailCostForContainerType($cocType, $value, false, 'soc');
                 $dangerCostSOC = $this->getRailCostForContainerType($cocType, $value, true, 'soc');
-                $hasCostSOC = $normalCostSOC > 0 || $dangerCostSOC > 0;
+                $hasCostSOC = $normalCostSOC > 0;
                 
                 // Добавляем ряд для SOC ТОЛЬКО если есть хотя бы одна стоимость
                 if ($hasCostSOC) {
@@ -1202,7 +1202,7 @@ public function getRailPerevozki() {
                 $dangerCost = $this->getRailCostForContainerType($cocType, $value, true, $ownershipType);
                 
                 // Проверяем наличие хотя бы одной стоимости
-                $hasCost = $normalCost > 0 || $dangerCost > 0;
+                $hasCost = $normalCost > 0;
                 
                 if ($hasCost) {
                     if (!$isHazard) {

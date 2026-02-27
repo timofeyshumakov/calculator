@@ -1005,8 +1005,9 @@ createApp({
                 });
 
                 const data = await response.json();
-
+                console.log(data);
                 if (data.error) {
+                    seaResults.value = [];
                     showUploadMessage(data.message || 'Ошибка расчета', 'error');
                     return;
                 }
@@ -1229,9 +1230,7 @@ console.log('Точки перевалки (нормализованные):', t
 };
 
 const onTransshipmentPortChange = () => {
-    combForm.value.destination = '';
-    combResults.value = []; // Очищаем результаты при изменении порта перевалки
-    
+
     if (!combForm.value.transshipmentPort) {
         // Если порт перевалки не выбран, показываем все пункты назначения
         loadAllDestinationsForPol();
