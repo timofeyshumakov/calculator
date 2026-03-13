@@ -2,21 +2,27 @@
 
 // Подключаем PHP-SDK CRest для работы с REST API
 require_once __DIR__ . '/crestV136/crest.php';
-
-// Подключаем Composer
-require_once __DIR__ . '/vendor/autoload.php';
+/*
+// Подключаем PhpSpreadsheet напрямую (без Composer)
+require_once __DIR__ . '/vendor/phpoffice/phpspreadsheet/src/PhpSpreadsheet/Autoloader.php';
+\PhpOffice\PhpSpreadsheet\Autoloader::register();
 
 // Подключаем библиотеку разбора Excel
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-
+*/
 /**
  * Контроллер для обработки запросов калькулятора стоимости перевозок.
  * Обрабатывает два экшена: index (отображает форму) и install (устанавливает локальное приложение).
  */
 class TransportationCalculatorController
 {
+    // Константы ID инфоблоков
+    public const IBLOCK_RAIL_TRANSPORTATION = 30;
+    public const IBLOCK_SEA_TRANSPORTATION = 28;
+    public const IBLOCK_COMBINED_TRANSPORTATION = 32;
+
     // маппинг полей жд перевозок
     public const ZHD_TRANSPORT_MAP = [
         'NAME' => 'POL',
@@ -64,25 +70,9 @@ class TransportationCalculatorController
         'PROPERTY_188' => 'STANTSIYA_NAZNACHENIYA',
         'PROPERTY_190' => 'REMARK',
     ];
-    public const RAIL_COLUMNS = [
-        '20DC (<24t)' => [
-            'coc_normal' => 'PROPERTY_166',
-            'coc_danger' => 'PROPERTY_168',
-            'soc_normal' => 'PROPERTY_166', // SOC использует те же базовые стоимости
-            'soc_danger' => 'PROPERTY_168'
-        ],
-        '20DC (24t-28t)' => [
-            'coc_normal' => 'PROPERTY_170',
-            'coc_danger' => 'PROPERTY_172',
-            'soc_normal' => 'PROPERTY_170',
-            'soc_danger' => 'PROPERTY_172'
-        ],
-        '40HC (28t)' => [
-            'coc_normal' => 'PROPERTY_174',
-            'coc_danger' => 'PROPERTY_176',
-            'soc_normal' => 'PROPERTY_174',
-            'soc_danger' => 'PROPERTY_176'
-        ]
+
+    public const TRANSSHIPMENT_PORT_AGENT_MAP = [
+        'ВСК' => 'Восточная Стивидорная Компания',
     ];
 
     /**
@@ -91,11 +81,11 @@ class TransportationCalculatorController
     public function index()
     {
         // данные жд перевозок
-        $zhdPerevozki  = self::fetchTransportData(30, self::ZHD_TRANSPORT_MAP);
+        $zhdPerevozki  = self::fetchTransportData(self::IBLOCK_RAIL_TRANSPORTATION, self::ZHD_TRANSPORT_MAP);
         // данные морских перевозок
-        $seaPerevozki  = self::fetchTransportData(28, self::SEA_TRANSPORT_MAP);
+        $seaPerevozki  = self::fetchTransportData(self::IBLOCK_SEA_TRANSPORTATION, self::SEA_TRANSPORT_MAP);
         // данные комбинированных перевозок
-        $combPerevozki = self::fetchTransportData(32, self::COMB_TRANSPORT_MAP);
+        $combPerevozki = self::fetchTransportData(self::IBLOCK_COMBINED_TRANSPORTATION, self::COMB_TRANSPORT_MAP);
 
         // Подключаем файл с формой
         $formFile = __DIR__ . '/Forms.php';
@@ -809,7 +799,7 @@ public function getSeaPerevozki() {
     try {
         // Получаем данные морских перевозок
         $seaPerevozki = self::fetchTransportData(
-            28, 
+            self::IBLOCK_SEA_TRANSPORTATION, 
             self::SEA_TRANSPORT_MAP,
             [
                 '=NAME' => $params['sea_pol'] ?? '',
@@ -821,7 +811,7 @@ public function getSeaPerevozki() {
         // Если не нашли по точному совпадению, ищем только по POL и POD
         if (empty($seaPerevozki) && !empty($params['sea_pol']) && !empty($params['sea_pod'])) {
             $seaPerevozki = self::fetchTransportData(
-                28, 
+                self::IBLOCK_SEA_TRANSPORTATION, 
                 self::SEA_TRANSPORT_MAP,
                 [
                     '=NAME' => $params['sea_pol'],
@@ -1095,7 +1085,7 @@ public function getRailPerevozki() {
     try {
         // Получаем данные ж/д перевозок с фильтрацией
         $zhdPerevozki = self::fetchTransportData(
-            30, 
+            self::IBLOCK_RAIL_TRANSPORTATION, 
             self::ZHD_TRANSPORT_MAP,
             [
                 '=NAME' => $params['rail_origin'] ?? '',
@@ -1182,7 +1172,7 @@ public function getRailPerevozki() {
                         
                         // Опасный груз
                         'cost_base_danger' => $dangerCostSOC > 0 ? $dangerCostSOC : '-',
-                        'cost_total_danger' => $dangerCostSOC > 0 ? ceil($dangerCostSOC + $securityCost + $profit) : '-',
+                        'cost_total_danger' => $dangerCostSOC > 0 ? ceil($dangerCostSOC) : '-',
                         
                         // Общие поля
                         'cost_security' => $securityCost,
@@ -1200,7 +1190,7 @@ public function getRailPerevozki() {
                 // Получаем стоимость обычного груза для выбранного типа собственности
                 $normalCost = $this->getRailCostForContainerType($cocType, $value, false, $ownershipType);
                 $dangerCost = $this->getRailCostForContainerType($cocType, $value, true, $ownershipType);
-                
+
                 // Проверяем наличие хотя бы одной стоимости
                 $hasCost = $normalCost > 0;
                 
@@ -1399,17 +1389,6 @@ private function getSecurityCost($data, $security, $containerType): float {
 }
 
 /**
- * Рассчитывает итоговые стоимости
- */
-private function calculateTotalCosts($baseCosts, $securityCost, $profit): array {
-    return [
-        '20' => ceil($baseCosts['20'] + $securityCost + $profit),
-        '20_28' => ceil($baseCosts['20_28'] + $securityCost + $profit),
-        '40' => ceil($baseCosts['40'] + $securityCost + $profit)
-    ];
-}
-
-/**
  * Создает элемент результата для ж/д перевозок
  */
 private function createRailResultItem(
@@ -1604,7 +1583,7 @@ public function getCombPerevozki() {
         
         // Получаем все морские перевозки с указанным портом отправления и DROP OFF
         $seaPerevozki = self::fetchTransportData(
-            28, 
+            self::IBLOCK_SEA_TRANSPORTATION, 
             self::SEA_TRANSPORT_MAP,
             [
                 '=NAME' => $seaPol,
@@ -1625,7 +1604,7 @@ public function getCombPerevozki() {
         
         // Получаем все комбинированные перевозки
         $combPerevozki = self::fetchTransportData(
-            32,
+            self::IBLOCK_COMBINED_TRANSPORTATION,
             self::COMB_TRANSPORT_MAP,
             [
                 'PROPERTY_186' => $params['comb_rail_dest'] ?? ''
@@ -1691,8 +1670,8 @@ public function getCombPerevozki() {
 
         // Для каждой найденной морской перевозки
         foreach ($seaPerevozki as $seaValue) {
-            $cafPercent = floatval($seaValue["CAF_KONVERT"]);
             $seaPod = $seaValue['POD'] ?? '';
+            $cafPercent = floatval($seaValue["CAF_KONVERT"]);
 
             // Фильтруем комбинированные перевозки по морскому порту прибытия
             $filteredBySeaPod = [];
@@ -1701,33 +1680,60 @@ public function getCombPerevozki() {
                     $filteredBySeaPod[] = $combItem;
                 }
             }
-            
+
             if (empty($filteredBySeaPod)) {
                 continue; // Нет комбинированных перевозок для этого морского порта прибытия
             }
-            
+
             // Для каждой подходящей комбинированной перевозки
             foreach ($filteredBySeaPod as $combValue) {
                 $railStartStation = $combValue['STANTSIYA_OTPRAVLENIYA'] ?? '';
                 $railDestStation = $combValue['STANTSIYA_NAZNACHENIYA'] ?? '';
                 $combDestPoint = $combValue['PUNKT_NAZNACHENIYA'] ?? '';
+
+                $railFilter = [
+                    '=NAME' => $railStartStation,
+                ];
+                // Получаем ж/д перевозки для станции отправления
+                $railData = self::fetchTransportData(
+                    self::IBLOCK_RAIL_TRANSPORTATION, 
+                    self::ZHD_TRANSPORT_MAP,
+                    $railFilter
+                );
+                
+                
+                $podAgentMapping = [
+                    'ВСК' => 'Восточная Стивидорная Компания',
+                    'ВМРП' => 'Владивостокский морской рыбный порт',
+                    'ВМПП' => 'Владивостокский морской порт "Первомайский"',
+                    'ВМТП' => 'ООО "ФИТ г. Владивосток"',
+                    //'Соллерс' => '',
+                ];
+                
+    //echo json_encode([$combValue['PUNKT_OTPRAVLENIYA']], JSON_UNESCAPED_UNICODE);
+    //return json_encode([$combValue], JSON_UNESCAPED_UNICODE);
+                // Проверяем, есть ли соответствие для данного POD
+
                 
                 if (empty($railStartStation) || empty($railDestStation)) {
                     continue;
                 }
-                
-                // Получаем ж/д перевозки для станции отправления
-                $railData = self::fetchTransportData(
-                    30, 
-                    self::ZHD_TRANSPORT_MAP,
-                    [
-                        '=NAME' => $railStartStation,
-                    ]
-                );
-                
+
                 // Фильтруем по станции назначения
                 $filteredRailData = [];
                 foreach ($railData as $railItem) {
+
+                    $railAgent = $railItem['AGENT'] ?? '';
+                    if (isset($podAgentMapping[$combValue['PUNKT_OTPRAVLENIYA']])) {
+                        $expectedAgent = $podAgentMapping[$combValue['PUNKT_OTPRAVLENIYA']];
+                        // Если агент не соответствует ожидаемому, пропускаем эту морскую перевозку
+                        if ($railAgent !== $expectedAgent) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+
                     if (($railItem['POD'] ?? '') === $railDestStation) {
                         $filteredRailData[] = $railItem;
                     }
@@ -2185,7 +2191,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
     
     // Добавляем примечание из морской перевозки
     if (!empty($seaValue['REMARK'])) {
-        $remarks[] = 'Море: ' . trim($seaValue['REMARK']);
+        $remarks[] = trim($seaValue['REMARK']);
     }
     
     // Добавляем примечание из комбинированной перевозки
@@ -2193,7 +2199,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
         foreach ($combPerevozki as $combItem) {
             if (trim($combItem['STANTSIYA_OTPRAVLENIYA'] ?? '') === trim($railStartStation)) {
                 if (!empty($combItem['REMARK'])) {
-                    $remarks[] = 'Комб: ' . trim($combItem['REMARK']);
+                    $remarks[] = trim($combItem['REMARK']);
                 }
                 break;
             }
@@ -2215,7 +2221,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
         try {
             // Получаем данные ж/д перевозок с фильтрацией
             $zhdPerevozki = self::fetchTransportData(
-                30, 
+                self::IBLOCK_RAIL_TRANSPORTATION, 
                 self::ZHD_TRANSPORT_MAP,
                 [
                     '=NAME' => $params['rail_origin'] ?? '',
@@ -2297,7 +2303,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
         return json_encode($result, JSON_UNESCAPED_UNICODE);
     }
     /**
-     * Загружаем ЖД маршруты
+     * Загружаем ЖД маршруты из Excel файла (старый метод)
      *
      * @return [type]
      * 
@@ -2415,7 +2421,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
     }
 
     /**
-     * Загружаем морские маршруты
+     * Загружаем морские маршруты из Excel файла (старый метод)
      *
      * @return [type]
      * 
@@ -2505,16 +2511,16 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                             'PROPERTY_126' => trim((string)$row['B']),
                             'PROPERTY_162' => str_replace(',', '', trim((string)$row['C'])),
                             'PROPERTY_164' => str_replace(',', '', trim((string)$row['D'])),
-                            'PROPERTY_202' => str_replace(',', '', trim((string)$row['E'])),
-                            'PROPERTY_204' => str_replace(',', '', trim((string)$row['F'])),
-                            'PROPERTY_208' => str_replace(',', '', trim((string)$row['G'])),
-                            'PROPERTY_210' => str_replace(',', '', trim((string)$row['H'])),
-                            'PROPERTY_132' => trim((string)$row['I']),
-                            'PROPERTY_134' => str_replace(',', '', trim((string)$row['J'])),
-                            'PROPERTY_136' => str_replace(',', '', trim((string)$row['K'])),
-                            'PROPERTY_138' => trim((string)$row['L']),
-                            'PROPERTY_140' => trim((string)$row['M']),
-                            'PROPERTY_192' => trim((string)$row['N']), // agent
+                            'PROPERTY_132' => str_replace(',', '', trim((string)$row['E'])),
+                            'PROPERTY_134' => str_replace(',', '', trim((string)$row['F'])),
+                            'PROPERTY_136' => str_replace(',', '', trim((string)$row['G'])),
+                            'PROPERTY_138' => str_replace(',', '', trim((string)$row['H'])),
+                            'PROPERTY_140' => trim((string)$row['I']),
+                            'PROPERTY_192' => str_replace(',', '', trim((string)$row['J'])),
+                            'PROPERTY_202' => str_replace(',', '', trim((string)$row['K'])),
+                            'PROPERTY_200' => str_replace(',', '', trim((string)$row['L'])),
+                            'PROPERTY_208' => trim((string)$row['M']),
+                            'PROPERTY_210' => trim((string)$row['N']), // agent
 
                         ],
                     ]);
@@ -2545,7 +2551,7 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
     }
 
     /**
-     * Загружаем комбинированные маршруты
+     * Загружаем комбинированные маршруты из Excel файла (старый метод)
      *
      * @return [type]
      * 
@@ -2662,6 +2668,223 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
             http_response_code(500);
             echo json_encode(['error' => 'Серверная ошибка: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
             exit;
+        }
+    }
+
+    /**
+     * Загружаем ЖД маршруты из JSON данных (новый метод для Vue.js)
+     * Принимает JSON данные, отправленные с клиента
+     *
+     * @return void
+     */
+    public function uploadZhdData()
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['error' => 'Метод не разрешён'], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (empty($input) || !is_array($input)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Нет данных для загрузки'], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $added = 0;
+            $errors = [];
+
+            foreach ($input as $idx => $row) {
+                try {
+                    $response = \CRest::call('lists.element.add', [
+                        'IBLOCK_TYPE_ID' => 'lists',
+                        'IBLOCK_ID'      => 30,
+                        'ELEMENT_CODE'   => 'el_' . $idx . rand(1, 9999),
+                        'FIELDS'         => [
+                            'NAME'         => trim((string)($row['A'] ?? '')),
+                            'PROPERTY_142' => trim((string)($row['B'] ?? '')),
+                            'PROPERTY_212' => str_replace(',', '', trim((string)($row['C'] ?? ''))),
+                            'PROPERTY_214' => str_replace(',', '', trim((string)($row['D'] ?? ''))),
+                            'PROPERTY_216' => str_replace(',', '', trim((string)($row['E'] ?? ''))),
+                            'PROPERTY_166' => str_replace(',', '', trim((string)($row['F'] ?? ''))),
+                            'PROPERTY_170' => str_replace(',', '', trim((string)($row['G'] ?? ''))),
+                            'PROPERTY_174' => str_replace(',', '', trim((string)($row['H'] ?? ''))),
+                            'PROPERTY_168' => str_replace(',', '', trim((string)($row['I'] ?? ''))),
+                            'PROPERTY_172' => str_replace(',', '', trim((string)($row['J'] ?? ''))),
+                            'PROPERTY_176' => str_replace(',', '', trim((string)($row['K'] ?? ''))),
+                            'PROPERTY_178' => str_replace(',', '', trim((string)($row['L'] ?? ''))),
+                            'PROPERTY_180' => str_replace(',', '', trim((string)($row['M'] ?? ''))),
+                            'PROPERTY_196' => trim((string)($row['N'] ?? '')),
+                        ],
+                    ]);
+
+                    if (!isset($response['result'])) {
+                        $errors[] = ['row' => $idx, 'error' => $response['error_description'] ?? 'Неизвестная ошибка Bitrix24'];
+                    } else {
+                        $added++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = ['row' => $idx, 'error' => $e->getMessage()];
+                }
+            }
+
+            http_response_code($errors ? 207 : 200);
+            echo json_encode(
+                ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка ЖД завершена'],
+                JSON_UNESCAPED_UNICODE
+            );
+            return;
+        } catch (\Throwable $e) {
+            file_put_contents(__DIR__ . '/error.log', date('c') . " (uploadZhdData) " . $e->getMessage() . "\n", FILE_APPEND | LOCK_EX);
+            http_response_code(500);
+            echo json_encode(['error' => 'Серверная ошибка: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+    }
+
+    /**
+     * Загружаем морские маршруты из JSON данных (новый метод для Vue.js)
+     * Принимает JSON данные, отправленные с клиента
+     *
+     * @return void
+     */
+    public function uploadSeaData()
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['error' => 'Метод не разрешён'], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (empty($input) || !is_array($input)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Нет данных для загрузки'], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $added = 0;
+            $errors = [];
+
+            foreach ($input as $idx => $row) {
+                try {
+                    $response = \CRest::call('lists.element.add', [
+                        'IBLOCK_TYPE_ID' => 'lists',
+                        'IBLOCK_ID'      => 28,
+                        'ELEMENT_CODE'   => 'el_' . $idx . rand(1, 9999),
+                        'FIELDS' => [
+                            'NAME'         => trim((string)($row['A'] ?? '')),  // Порт
+                            'PROPERTY_126' => trim((string)($row['B'] ?? '')),
+                            'PROPERTY_162' => str_replace(',', '', trim((string)($row['C'] ?? ''))),
+                            'PROPERTY_164' => str_replace(',', '', trim((string)($row['D'] ?? ''))),
+                            'PROPERTY_132' => str_replace(',', '', trim((string)($row['E'] ?? ''))),
+                            'PROPERTY_134' => str_replace(',', '', trim((string)($row['F'] ?? ''))),
+                            'PROPERTY_136' => str_replace(',', '', trim((string)($row['G'] ?? ''))),
+                            'PROPERTY_138' => str_replace(',', '', trim((string)($row['H'] ?? ''))),
+                            'PROPERTY_140' => trim((string)($row['I'] ?? '')),
+                            'PROPERTY_192' => str_replace(',', '', trim((string)($row['J'] ?? ''))),
+                            'PROPERTY_202' => str_replace(',', '', trim((string)($row['K'] ?? ''))),
+                            'PROPERTY_200' => str_replace(',', '', trim((string)($row['L'] ?? ''))),
+                            'PROPERTY_208' => trim((string)($row['M'] ?? '')),
+                            'PROPERTY_210' => trim((string)($row['N'] ?? '')), // agent
+                        ],
+                    ]);
+
+                    if (!isset($response['result'])) {
+                        $errors[] = ['row' => $idx, 'error' => $response['error_description'] ?? 'Неизвестная ошибка Bitrix24'];
+                    } else {
+                        $added++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = ['row' => $idx, 'error' => $e->getMessage()];
+                }
+            }
+
+            http_response_code($errors ? 207 : 200);
+            echo json_encode(
+                ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка морских маршрутов завершена'],
+                JSON_UNESCAPED_UNICODE
+            );
+            return;
+        } catch (\Throwable $e) {
+            file_put_contents(__DIR__ . '/error.log', date('c') . " (uploadSeaData) " . $e->getMessage() . "\n", FILE_APPEND | LOCK_EX);
+            http_response_code(500);
+            echo json_encode(['error' => 'Серверная ошибка: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+    }
+
+    /**
+     * Загружаем комбинированные маршруты из JSON данных (новый метод для Vue.js)
+     * Принимает JSON данные, отправленные с клиента
+     *
+     * @return void
+     */
+    public function uploadCombData()
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        try {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['error' => 'Метод не разрешён'], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (empty($input) || !is_array($input)) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Нет данных для загрузки'], JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $added = 0;
+            $errors = [];
+
+            foreach ($input as $idx => $row) {
+                try {
+                    $response = \CRest::call('lists.element.add', [
+                        'IBLOCK_TYPE_ID' => 'lists',
+                        'IBLOCK_ID'      => 32,
+                        'ELEMENT_CODE'   => 'el_' . $idx . rand(1, 9999),
+                        'FIELDS'         => [
+                            'NAME'         => trim((string)($row['A'] ?? '')), // Порт
+                            'PROPERTY_182' => trim((string)($row['B'] ?? '')), // Пункт отправления
+                            'PROPERTY_184' => trim((string)($row['C'] ?? '')), // Станция отправления
+                            'PROPERTY_186' => trim((string)($row['D'] ?? '')), // Пункт назначения
+                            'PROPERTY_188' => trim((string)($row['E'] ?? '')), // Станция назначения
+                            'PROPERTY_190' => trim((string)($row['F'] ?? '')), // Remark
+                        ],
+                    ]);
+
+                    if (!isset($response['result'])) {
+                        $errors[] = ['row' => $idx, 'error' => $response['error_description'] ?? 'Неизвестная ошибка Bitrix24'];
+                    } else {
+                        $added++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = ['row' => $idx, 'error' => $e->getMessage()];
+                }
+            }
+
+            http_response_code($errors ? 207 : 200);
+            echo json_encode(
+                ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка комбинированных маршрутов завершена'],
+                JSON_UNESCAPED_UNICODE
+            );
+            return;
+        } catch (\Throwable $e) {
+            file_put_contents(__DIR__ . '/error.log', date('c') . " (uploadCombData) " . $e->getMessage() . "\n", FILE_APPEND | LOCK_EX);
+            http_response_code(500);
+            echo json_encode(['error' => 'Серверная ошибка: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            return;
         }
     }
 

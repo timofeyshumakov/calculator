@@ -1454,31 +1454,50 @@ const exportToExcel = async (type) => {
             const file = event.target.files[0];
             if (!file) return;
 
-            const uploadMap = {
-                'zhd': 'uploadZhd',
-                'sea': 'uploadSea',
-                'comb': 'uploadComb'
+            // Используем новый метод с парсингом на клиенте
+            const parseMap = {
+                'zhd': parseExcelZhd,
+                'sea': parseExcelSea,
+                'comb': parseExcelComb
             };
 
-            const action = uploadMap[currentUploadType.value];
-            if (!action) return;
+            const parseMethod = parseMap[currentUploadType.value];
+            if (!parseMethod) return;
 
             // Показываем индикатор загрузки
             uploading.value = true;
-            showLoading(`Загрузка файла ${file.name}...`);
-            updateProgress(30, 'Отправка файла на сервер...');
-
-            const formData = new FormData();
-            formData.append('file', file);
+            showLoading(`Чтение файла ${file.name}...`);
 
             try {
+                // Парсим Excel на клиенте
+                const rows = await parseMethod(file);
+                
+                if (!rows || rows.length === 0) {
+                    showUploadMessage('В файле нет данных для загрузки', 'warning');
+                    return;
+                }
+
+                updateProgress(30, 'Отправка данных на сервер...');
+
+                // Отправляем данные на сервер
+                const actionMap = {
+                    'zhd': 'uploadZhdData',
+                    'sea': 'uploadSeaData',
+                    'comb': 'uploadCombData'
+                };
+                
+                const action = actionMap[currentUploadType.value];
+                
                 const response = await fetch(`${cleanUrl}?action=${encodeURIComponent(action)}`, {
                     method: 'POST',
-                    body: formData,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(rows),
                     credentials: 'same-origin'
                 });
 
-                updateProgress(70, 'Обработка файла на сервере...');
+                updateProgress(70, 'Обработка ответа...');
                 
                 const text = await response.text();
 
@@ -1509,13 +1528,134 @@ const exportToExcel = async (type) => {
                 }
             } catch (error) {
                 console.error('Ошибка загрузки:', error);
-                showUploadMessage(`Сетевая ошибка: ${error.message || error}`, 'error');
+                showUploadMessage(`Ошибка: ${error.message || error}`, 'error');
             } finally {
                 uploading.value = false;
                 hideLoading();
                 currentUploadType.value = '';
                 event.target.value = ''; // Сброс input
             }
+        };
+
+        // Методы для парсинга Excel на клиенте с использованием exceljs
+        const parseExcelZhd = async (file) => {
+            const workbook = new ExcelJS.Workbook();
+            const arrayBuffer = await file.arrayBuffer();
+            await workbook.xlsx.load(arrayBuffer);
+            
+            const worksheet = workbook.getWorksheet(1);
+            const rows = [];
+            const headerRow = worksheet.getRow(1);
+            const cols = ['A','B','C','D','E','F','G','H','I','J','K', 'L', 'M', 'N'];
+            
+            worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+                // Пропускаем заголовок и его возможные повторения
+                if (rowNumber === 1) return;
+                
+                const isHeader = cols.every(c => {
+                    const cellValue = row.getCell(c).value;
+                    const headerValue = headerRow.getCell(c).value;
+                    return String(cellValue ?? '').trim() === String(headerValue ?? '').trim();
+                });
+                if (isHeader) return;
+
+                // Пропускаем полностью пустые строки
+                const allEmpty = cols.every(c => {
+                    const value = row.getCell(c).value;
+                    return !value || String(value).trim() === '';
+                });
+                if (allEmpty) return;
+
+                // Собираем данные в объект с буквенными ключами
+                const rowData = {};
+                cols.forEach(c => {
+                    const value = row.getCell(c).value;
+                    rowData[c] = value !== null && value !== undefined ? String(value).trim() : '';
+                });
+                rows.push(rowData);
+            });
+            
+            return rows;
+        };
+
+        const parseExcelSea = async (file) => {
+            const workbook = new ExcelJS.Workbook();
+            const arrayBuffer = await file.arrayBuffer();
+            await workbook.xlsx.load(arrayBuffer);
+            
+            const worksheet = workbook.getWorksheet(1);
+            const rows = [];
+            const headerRow = worksheet.getRow(1);
+            const cols = ['A','B','C','D','E','F','G','H','I','J', 'K', 'L', 'M', 'N'];
+            
+            worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+                // Пропускаем заголовок и его возможные повторения
+                if (rowNumber === 1) return;
+                
+                const isHeader = cols.every(c => {
+                    const cellValue = row.getCell(c).value;
+                    const headerValue = headerRow.getCell(c).value;
+                    return String(cellValue ?? '').trim() === String(headerValue ?? '').trim();
+                });
+                if (isHeader) return;
+
+                // Пропускаем полностью пустые строки
+                const allEmpty = cols.every(c => {
+                    const value = row.getCell(c).value;
+                    return !value || String(value).trim() === '';
+                });
+                if (allEmpty) return;
+
+                // Собираем данные в объект с буквенными ключами
+                const rowData = {};
+                cols.forEach(c => {
+                    const value = row.getCell(c).value;
+                    rowData[c] = value !== null && value !== undefined ? String(value).trim() : '';
+                });
+                rows.push(rowData);
+            });
+            
+            return rows;
+        };
+
+        const parseExcelComb = async (file) => {
+            const workbook = new ExcelJS.Workbook();
+            const arrayBuffer = await file.arrayBuffer();
+            await workbook.xlsx.load(arrayBuffer);
+            
+            const worksheet = workbook.getWorksheet(1);
+            const rows = [];
+            const headerRow = worksheet.getRow(1);
+            const cols = ['A', 'B', 'C', 'D', 'E', 'F'];
+            
+            worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+                // Пропускаем заголовок и его возможные повторения
+                if (rowNumber === 1) return;
+                
+                const isHeader = cols.every(c => {
+                    const cellValue = row.getCell(c).value;
+                    const headerValue = headerRow.getCell(c).value;
+                    return String(cellValue ?? '').trim() === String(headerValue ?? '').trim();
+                });
+                if (isHeader) return;
+
+                // Пропускаем полностью пустые строки
+                const allEmpty = cols.every(c => {
+                    const value = row.getCell(c).value;
+                    return !value || String(value).trim() === '';
+                });
+                if (allEmpty) return;
+
+                // Собираем данные в объект с буквенными ключами
+                const rowData = {};
+                cols.forEach(c => {
+                    const value = row.getCell(c).value;
+                    rowData[c] = value !== null && value !== undefined ? String(value).trim() : '';
+                });
+                rows.push(rowData);
+            });
+            
+            return rows;
         };
 
         return {
@@ -1591,6 +1731,9 @@ const exportToExcel = async (type) => {
             fileInput,
             onSeaCocChange,
             onTransshipmentPortChange,
+            parseExcelZhd,
+            parseExcelSea,
+            parseExcelComb,
         };
     }
 }).use(Vuetify.createVuetify()).mount('#app');
