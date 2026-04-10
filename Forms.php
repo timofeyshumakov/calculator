@@ -1109,6 +1109,13 @@ createApp({
         };
 
 // Комбинированные перевозки
+// STANTSIYA_OTPRAVLENIYA комбинированной строки должна совпадать с POL в ж/д перевозке
+const combRowMatchesRailPol = (combItem) => {
+    const st = (combItem.STANTSIYA_OTPRAVLENIYA ?? '').trim();
+    if (!st) return false;
+    return zhdPerevozki.some((r) => (r.POL ?? '').trim() === st);
+};
+
 const onCombPolChange = () => {
     combForm.value.dropOff = '';
     combForm.value.destination = '';
@@ -1199,28 +1206,20 @@ const onCombDropOffChange = () => {
         return;
     }
 
-const seaPods = [...new Set(seaRecords
-    .map(item => item.DROP_OFF_LOCATION?.trim().toUpperCase())
-    .filter(Boolean)
-)];
+// Морские POD (порт прибытия) для выбранных POL и DROP_OFF
+const seaPods = [...new Set(seaRecords.map((item) => (item.POD ?? '').trim()).filter(Boolean))];
 
-console.log('Морские порты назначения (нормализованные):', seaPods);
-console.log('combPerevozki:', combPerevozki);
-console.log('seaRecords:', seaRecords);
-
-// Получаем порты перевалки из комбинированных перевозок
-// Где POL в комбинированных перевозках соответствует POD из морских перевозок
+// Порты перевалки: PUNKT_OTPRAVLENIYA = морской POD, есть ж/д с POL = STANTSIYA_OTPRAVLENIYA
 const transshipmentPoints = [...new Set(
     combPerevozki
-        .filter(item => {
-            const destination = item.PUNKT_NAZNACHENIYA?.trim().toUpperCase();
-            return destination && seaPods.includes(destination);
+        .filter((item) => {
+            const punkt = (item.PUNKT_OTPRAVLENIYA ?? '').trim();
+            if (!punkt || !seaPods.includes(punkt)) return false;
+            return combRowMatchesRailPol(item);
         })
-        .map(item => item.PUNKT_OTPRAVLENIYA?.trim())
-        .filter(point => point && point !== '')
+        .map((item) => (item.PUNKT_OTPRAVLENIYA ?? '').trim())
+        .filter(Boolean)
 )];
-
-console.log('Точки перевалки (нормализованные):', transshipmentPoints);
 
     transshipmentPorts.value = transshipmentPoints.map(point => ({ 
         title: point, 
@@ -1251,20 +1250,18 @@ const onTransshipmentPortChange = () => {
             return;
         }
         
-        // Получаем уникальные POD из морских перевозок
-        const seaPods = [...new Set(seaRecords.map(item => item.POD))];
-        console.log(combPerevozki);
-        // Получаем пункты назначения из комбинированных перевозок где:
-        // 1. POL = POD из морских перевозок
-        // 2. PUNKT_OTPRAVLENIYA = выбранный порт перевалки
+        const seaPods = [...new Set(seaRecords.map((item) => (item.POD ?? '').trim()).filter(Boolean))];
+        const selTs = (selectedTransshipment ?? '').trim();
+        // Пункты назначения: PUNKT_OTPRAVLENIYA = выбранный порт = морской POD; ж/д POL = STANTSIYA_OTPRAVLENIYA
         const destinations = [...new Set(
             combPerevozki
-                .filter(item => 
-                    //seaPods.includes(item.POL) && 
-                    item.PUNKT_OTPRAVLENIYA === selectedTransshipment
-                )
-                .map(item => item.PUNKT_NAZNACHENIYA)
-                .filter(dest => dest && dest.trim() !== '')
+                .filter((item) => {
+                    if ((item.PUNKT_OTPRAVLENIYA ?? '').trim() !== selTs) return false;
+                    if (!seaPods.includes((item.PUNKT_OTPRAVLENIYA ?? '').trim())) return false;
+                    return combRowMatchesRailPol(item);
+                })
+                .map((item) => item.PUNKT_NAZNACHENIYA)
+                .filter((dest) => dest && dest.trim() !== '')
         )];
         
         combDestinations.value = destinations.map(dest => ({ 
