@@ -39,6 +39,7 @@ class TransportationCalculatorController
         'PROPERTY_168' => 'OPASNYY_20DC_24T',
         'PROPERTY_172' => 'OPASNYY_20DC_24T_28T',
         'PROPERTY_176' => 'OPASNYY_40HC_28T',
+        'PROPERTY_228' => 'PORT_PEREVALKI',
     ];
 
     // маппинг полей морских перевозок
@@ -1002,6 +1003,10 @@ public function getCombPerevozki() {
                 $railFilter = [
                     '=NAME' => $railStartStation,
                 ];
+                // Ж/д относится к данной морской перевозке, если POD моря = PORT_PEREVALKI ж/д (PROPERTY_228)
+                if ($seaPod !== '') {
+                    $railFilter['=PROPERTY_228'] = $seaPod;
+                }
                 // Получаем ж/д перевозки для станции отправления
                 $railData = self::fetchTransportData(
                     self::IBLOCK_RAIL_TRANSPORTATION, 
@@ -1016,6 +1021,9 @@ public function getCombPerevozki() {
                 // Ж/д: POL (станция отправления) = STANTSIYA_OTPRAVLENIYA из комбинированной, POD = станция назначения
                 $filteredRailData = [];
                 foreach ($railData as $railItem) {
+                    if ($seaPod !== '' && trim((string)($railItem['PORT_PEREVALKI'] ?? '')) !== trim((string)$seaPod)) {
+                        continue;
+                    }
                     if (trim((string)($railItem['POL'] ?? '')) !== trim($railStartStation)) {
                         continue;
                     }
@@ -1979,8 +1987,8 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                             'PROPERTY_178' => str_replace(',', '', trim((string)($row['L'] ?? ''))),
                             'PROPERTY_180' => str_replace(',', '', trim((string)($row['M'] ?? ''))),
                             'PROPERTY_196' => trim((string)($row['N'] ?? '')),
-                        ],
-                    ]);
+                            'PROPERTY_228' => trim((string)($row['O'] ?? '')),
+                    ]]);
 
                     if (!isset($response['result'])) {
                         $errors[] = ['row' => $idx, 'error' => $response['error_description'] ?? 'Неизвестная ошибка Bitrix24'];

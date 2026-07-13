@@ -1543,7 +1543,7 @@ const exportToExcel = async (type) => {
             const worksheet = workbook.getWorksheet(1);
             const rows = [];
             const headerRow = worksheet.getRow(1);
-            const cols = ['A','B','C','D','E','F','G','H','I','J','K', 'L', 'M', 'N'];
+            const cols = ['A','B','C','D','E','F','G','H','I','J','K', 'L', 'M', 'N', 'O'];
             
             worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
                 // Пропускаем заголовок и его возможные повторения
