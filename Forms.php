@@ -8,19 +8,23 @@
  */
 
 // Списки морских портов
-$seaPorts = array_unique(array_column($seaPerevozki, 'POL'));
+$seaPorts = array_unique(array_column($seaPerevozki ?? [], 'POL'));
 
 // Списки Ж/Д станций отправлений
-$zhdStarts = array_unique(array_column($zhdPerevozki, 'POL'));
+$zhdStarts = array_unique(array_column($zhdPerevozki ?? [], 'POL'));
 
 // Списки комбинированных портов отправлений
-$combStarts = array_unique(array_column($seaPerevozki, 'POL'));
-$allSeaPods = array_unique(array_column($seaPerevozki, 'POD'));
+$combStarts = array_unique(array_column($seaPerevozki ?? [], 'POL'));
+$allSeaPods = array_unique(array_column($seaPerevozki ?? [], 'POD'));
 
 // Подготовка данных для Vue
 $seaPortsForVue = array_values($seaPorts);
 $zhdStartsForVue = array_values($zhdStarts);
 $combStartsForVue = array_values($combStarts);
+$controllerUrl = $controllerUrl ?? 'Controller.php';
+$transportFromCache = $transportFromCache ?? false;
+$needsAsyncTransportLoad = $needsAsyncTransportLoad ?? true;
+$reloadTypes = $reloadTypes ?? ['sea', 'rail', 'comb'];
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -554,30 +558,78 @@ $combStartsForVue = array_values($combStarts);
 <script src="https://cdn.jsdelivr.net/npm/vuetify@3.5.0/dist/vuetify.min.js"></script>
 
 <script>
-const { createApp, ref, computed } = Vue;
+const { createApp, ref, computed, onMounted } = Vue;
 const { VDataTable } = Vuetify;
 
-const cleanUrl = window.location.origin + window.location.pathname;
+const apiUrl = <?= json_encode($controllerUrl, JSON_UNESCAPED_UNICODE) ?>;
+
+const buildApiUrl = (action, params = {}) => {
+    const url = new URL(apiUrl, window.location.origin);
+    url.searchParams.set('action', action);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+    return url.toString();
+};
+
+const normalizeFieldValue = (value) => {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value).trim();
+    }
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return '';
+        }
+        return normalizeFieldValue(value[0]);
+    }
+    if (typeof value === 'object') {
+        if (value.VALUE !== undefined) {
+            return normalizeFieldValue(value.VALUE);
+        }
+        if (value.value !== undefined) {
+            return normalizeFieldValue(value.value);
+        }
+        const values = Object.values(value);
+        if (values.length > 0) {
+            return normalizeFieldValue(values[0]);
+        }
+    }
+    return '';
+};
+
+const normalizeTransportRows = (rows) => {
+    if (!Array.isArray(rows)) {
+        return [];
+    }
+
+    return rows.map((row) => {
+        const normalized = {};
+        Object.entries(row || {}).forEach(([key, value]) => {
+            normalized[key] = normalizeFieldValue(value);
+        });
+        return normalized;
+    });
+};
+
+const uniqueSelectOptions = (values) => {
+    return [...new Set(values.map((value) => normalizeFieldValue(value)).filter(Boolean))]
+        .map((value) => ({ title: value, value }));
+};
 
 createApp({
     components: {
         VDataTable
     },
     setup() {
-        // Данные из PHP
-        const seaPerevozkiData = <?= json_encode($seaPerevozki, JSON_UNESCAPED_UNICODE) ?>;
-        const zhdPerevozkiData = <?= json_encode($zhdPerevozki, JSON_UNESCAPED_UNICODE) ?>;
-        const combPerevozkiData = <?= json_encode($combPerevozki, JSON_UNESCAPED_UNICODE) ?>;
-        
-        // Преобразуем массивы для удобства использования
-        const seaPerevozki = Array.isArray(seaPerevozkiData) ? seaPerevozkiData : [];
-        const zhdPerevozki = Array.isArray(zhdPerevozkiData) ? zhdPerevozkiData : [];
-        const combPerevozki = Array.isArray(combPerevozkiData) ? combPerevozkiData : [];
+        const seaPerevozki = ref(normalizeTransportRows(<?= json_encode($seaPerevozki ?? [], JSON_UNESCAPED_UNICODE) ?>));
+        const zhdPerevozki = ref(normalizeTransportRows(<?= json_encode($zhdPerevozki ?? [], JSON_UNESCAPED_UNICODE) ?>));
+        const combPerevozki = ref(normalizeTransportRows(<?= json_encode($combPerevozki ?? [], JSON_UNESCAPED_UNICODE) ?>));
 
         // Состояние приложения
         const calcType = ref('');
-        const loading = ref(false);
-        const loadingMessage = ref('Идет расчет...');
+        const loading = ref(<?= $transportFromCache ? 'false' : 'true' ?>);
+        const loadingMessage = ref(<?= json_encode($transportFromCache ? 'Идет расчет...' : 'Загрузка справочников...', JSON_UNESCAPED_UNICODE) ?>);
         const loadingProgress = ref(0);
         const uploading = ref(false);
         const uploadMessage = ref('');
@@ -649,18 +701,20 @@ createApp({
             { title: 'Комбинированный маршрут', value: 'combined' }
         ]);
 
-        // Данные из PHP для селектов
-        const seaPorts = ref(<?= json_encode(array_map(function($port) {
-            return ['title' => $port, 'value' => $port];
-        }, $seaPortsForVue), JSON_UNESCAPED_UNICODE) ?>);
+        const seaPorts = computed(() => {
+            const ports = [...new Set(seaPerevozki.value.map(r => r.POL).filter(Boolean))];
+            return ports.map(port => ({ title: port, value: port }));
+        });
 
-        const zhdStarts = ref(<?= json_encode(array_map(function($station) {
-            return ['title' => $station, 'value' => $station];
-        }, $zhdStartsForVue), JSON_UNESCAPED_UNICODE) ?>);
+        const zhdStarts = computed(() => {
+            const stations = [...new Set(zhdPerevozki.value.map(r => r.POL).filter(Boolean))];
+            return stations.map(station => ({ title: station, value: station }));
+        });
 
-        const combStarts = ref(<?= json_encode(array_map(function($port) {
-            return ['title' => $port, 'value' => $port];
-        }, $combStartsForVue), JSON_UNESCAPED_UNICODE) ?>);
+        const combStarts = computed(() => {
+            const ports = [...new Set(seaPerevozki.value.map(r => r.POL).filter(Boolean))];
+            return ports.map(port => ({ title: port, value: port }));
+        });
 
         const seaCocTypes = ref([
             { title: '20DC', value: '20DC' },
@@ -823,6 +877,90 @@ createApp({
             uploadMessage.value = '';
         };
 
+        const loadTransportData = async () => {
+            const typesToLoad = <?= json_encode(array_values($reloadTypes), JSON_UNESCAPED_UNICODE) ?>;
+            const hasAnyData = seaPerevozki.value.length > 0
+                || zhdPerevozki.value.length > 0
+                || combPerevozki.value.length > 0;
+
+            // Блокируем UI только если данных ещё нет
+            if (!hasAnyData) {
+                showLoading('Загрузка справочников...');
+            } else {
+                loadingMessage.value = 'Обновление справочников...';
+            }
+
+            const loaders = [
+                {
+                    type: 'sea',
+                    label: 'морских маршрутов',
+                    apply: (data) => {
+                        seaPerevozki.value = normalizeTransportRows(data.seaPerevozki);
+                    }
+                },
+                {
+                    type: 'rail',
+                    label: 'ж/д маршрутов',
+                    apply: (data) => {
+                        zhdPerevozki.value = normalizeTransportRows(data.zhdPerevozki);
+                    }
+                },
+                {
+                    type: 'comb',
+                    label: 'комбинированных маршрутов',
+                    apply: (data) => {
+                        combPerevozki.value = normalizeTransportRows(data.combPerevozki);
+                    }
+                }
+            ].filter((loader) => typesToLoad.includes(loader.type));
+
+            try {
+                for (let index = 0; index < loaders.length; index++) {
+                    const loader = loaders[index];
+
+                    updateProgress(
+                        Math.round(((index + 1) / Math.max(loaders.length, 1)) * 100),
+                        `Загрузка ${loader.label}...`
+                    );
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 90000);
+                    let response;
+                    try {
+                        response = await fetch(buildApiUrl('getTransportData', { type: loader.type }), {
+                            signal: controller.signal
+                        });
+                    } finally {
+                        clearTimeout(timeoutId);
+                    }
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.message || `Не удалось загрузить ${loader.label}`);
+                    }
+
+                    loader.apply(data);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки справочников:', error);
+                const message = error.name === 'AbortError'
+                    ? 'Превышено время ожидания загрузки справочников'
+                    : ('Ошибка при загрузке справочников: ' + error.message);
+                showUploadMessage(message, 'error');
+            } finally {
+                hideLoading();
+            }
+        };
+
+        onMounted(() => {
+            if (<?= $needsAsyncTransportLoad ? 'true' : 'false' ?>) {
+                loadTransportData();
+            } else {
+                hideLoading();
+            }
+        });
+
         // Морские перевозки
         const onSeaPolChange = () => {
             seaForm.value.pod = '';
@@ -843,7 +981,7 @@ createApp({
             }
 
             // Получаем уникальные POD для выбранного POL
-            const pods = [...new Set(seaPerevozki
+            const pods = [...new Set(seaPerevozki.value
                 .filter(r => r.POL === seaForm.value.pol)
                 .map(r => r.POD))];
             seaPods.value = pods.map(pod => ({ title: pod, value: pod }));
@@ -862,17 +1000,16 @@ createApp({
             }
 
             // Получаем уникальные DROP_OFF_LOCATION для выбранных POL, POD и типа контейнера
-            const locs = [...new Set(seaPerevozki
+            const locs = seaPerevozki.value
                 .filter(r => 
                     r.POL === seaForm.value.pol && 
                     r.POD === seaForm.value.pod
-                    // Фильтруем по наличию данных для выбранного типа контейнера
                     && (seaForm.value.coc === '20DC' 
                         ? (r.COC_20GP || r.SOC_20GP || r.DROP_OFF_20GP)
                         : (r.COC_40HC || r.SOC_40HC || r.DROP_OFF_40HC))
                 )
-                .map(r => r.DROP_OFF_LOCATION))];
-            seaDropOffLocations.value = locs.map(loc => ({ title: loc, value: loc }));
+                .map(r => r.DROP_OFF_LOCATION);
+            seaDropOffLocations.value = uniqueSelectOptions(locs);
         };
 
         const onSeaPodChange = () => {
@@ -887,10 +1024,10 @@ createApp({
             }
 
             // Получаем уникальные DROP_OFF_LOCATION
-            const locs = [...new Set(seaPerevozki
+            const locs = seaPerevozki.value
                 .filter(r => r.POL === seaForm.value.pol && r.POD === seaForm.value.pod)
-                .map(r => r.DROP_OFF_LOCATION))];
-            seaDropOffLocations.value = locs.map(loc => ({ title: loc, value: loc }));
+                .map(r => r.DROP_OFF_LOCATION);
+            seaDropOffLocations.value = uniqueSelectOptions(locs);
         };
 
         const onSeaDropOffChange = () => {
@@ -911,7 +1048,7 @@ createApp({
             if (!(pol && pod && loc && coc)) return;
 
             // Находим запись для заполнения полей
-            const rec = seaPerevozki.find(r =>
+            const rec = seaPerevozki.value.find(r =>
                 r.POL === pol &&
                 r.POD === pod &&
                 r.DROP_OFF_LOCATION === loc
@@ -940,7 +1077,7 @@ createApp({
             }
 
             // Находим запись
-            const rec = seaPerevozki.find(r =>
+            const rec = seaPerevozki.value.find(r =>
                 r.POL === pol &&
                 r.POD === pod &&
                 r.DROP_OFF_LOCATION === loc
@@ -998,7 +1135,7 @@ createApp({
                     sea_profit: seaForm.value.profit
                 };
 
-                const response = await fetch(cleanUrl + '?action=getSeaPerevozki', {
+                const response = await fetch(buildApiUrl('getSeaPerevozki'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams(payload)
@@ -1038,7 +1175,7 @@ createApp({
             }
 
             // Получаем уникальные станции назначения
-            const dests = [...new Set(zhdPerevozki
+            const dests = [...new Set(zhdPerevozki.value
                 .filter(r => r.POL === railForm.value.origin)
                 .map(r => r.POD))];
             railDestinations.value = dests.map(dest => ({ title: dest, value: dest }));
@@ -1060,7 +1197,7 @@ createApp({
             // Находим запись для получения агента
             const origin = railForm.value.origin;
             const dest = railForm.value.destination;
-            const rec = zhdPerevozki.find(r => r.POL === origin && r.POD === dest);
+            const rec = zhdPerevozki.value.find(r => r.POL === origin && r.POD === dest);
             
             if (rec) {
                 railForm.value.agent = rec.AGENT || '';
@@ -1085,7 +1222,7 @@ createApp({
                     rail_profit: railForm.value.profit
                 };
 
-                const response = await fetch(cleanUrl + '?action=getRailPerevozki', {
+                const response = await fetch(buildApiUrl('getRailPerevozki'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams(payload)
@@ -1113,7 +1250,7 @@ createApp({
 const combRowMatchesRailPol = (combItem) => {
     const st = (combItem.STANTSIYA_OTPRAVLENIYA ?? '').trim();
     if (!st) return false;
-    return zhdPerevozki.some((r) => (r.POL ?? '').trim() === st);
+    return zhdPerevozki.value.some((r) => (r.POL ?? '').trim() === st);
 };
 
 const onCombPolChange = () => {
@@ -1136,10 +1273,10 @@ const onCombPolChange = () => {
     }
 
     // Получаем уникальные DROP_OFF_LOCATION для выбранного POL
-    const dropOffs = [...new Set(seaPerevozki
+    const dropOffs = seaPerevozki.value
         .filter(item => item.POL === combForm.value.seaPol)
-        .map(item => item.DROP_OFF_LOCATION))];
-    combDropOffs.value = dropOffs.map(loc => ({ title: loc, value: loc }));
+        .map(item => item.DROP_OFF_LOCATION);
+    combDropOffs.value = uniqueSelectOptions(dropOffs);
     
     transshipmentPorts.value = [];
     combDestinations.value = [];
@@ -1157,12 +1294,12 @@ const loadAllDestinationsForPol = () => {
     }
     
     // Получаем уникальные POD (порты прибытия в морских перевозках)
-    const seaPods = [...new Set(combPerevozki.map(item => item.POL))];
+    const seaPods = [...new Set(combPerevozki.value.map(item => item.POL))];
 
     // Получаем ВСЕ пункты назначения из комбинированных перевозок,
     // где POL соответствует любому из найденных POD
     const allDestinations = [...new Set(
-        combPerevozki
+        combPerevozki.value
             .map(item => item.PUNKT_NAZNACHENIYA)
             .filter(dest => dest && dest.trim() !== '')
     )];
@@ -1195,7 +1332,7 @@ const onCombDropOffChange = () => {
     const selectedDropOff = combForm.value.dropOff;
 
     // Получаем все POD для выбранных POL и DROP_OFF_LOCATION из морских перевозок
-    const seaRecords = seaPerevozki.filter(item => 
+    const seaRecords = seaPerevozki.value.filter(item => 
         item.POL === selectedPol && 
         item.DROP_OFF_LOCATION === selectedDropOff
     );
@@ -1211,7 +1348,7 @@ const seaPods = [...new Set(seaRecords.map((item) => (item.POD ?? '').trim()).fi
 
 // Порты перевалки: PUNKT_OTPRAVLENIYA = морской POD, есть ж/д с POL = STANTSIYA_OTPRAVLENIYA
 const transshipmentPoints = [...new Set(
-    combPerevozki
+    combPerevozki.value
         .filter((item) => {
             const punkt = (item.PUNKT_OTPRAVLENIYA ?? '').trim();
             if (!punkt || !seaPods.includes(punkt)) return false;
@@ -1240,7 +1377,7 @@ const onTransshipmentPortChange = () => {
         const selectedTransshipment = combForm.value.transshipmentPort;
         
         // Получаем все POD для выбранных POL и DROP_OFF_LOCATION
-        const seaRecords = seaPerevozki.filter(item => 
+        const seaRecords = seaPerevozki.value.filter(item => 
             item.POL === selectedPol && 
             item.DROP_OFF_LOCATION === selectedDropOff
         );
@@ -1254,7 +1391,7 @@ const onTransshipmentPortChange = () => {
         const selTs = (selectedTransshipment ?? '').trim();
         // Пункты назначения: PUNKT_OTPRAVLENIYA = выбранный порт = морской POD; ж/д POL = STANTSIYA_OTPRAVLENIYA
         const destinations = [...new Set(
-            combPerevozki
+            combPerevozki.value
                 .filter((item) => {
                     if ((item.PUNKT_OTPRAVLENIYA ?? '').trim() !== selTs) return false;
                     if (!seaPods.includes((item.PUNKT_OTPRAVLENIYA ?? '').trim())) return false;
@@ -1296,7 +1433,7 @@ const calculateCombined = async () => {
             rail_profit: combForm.value.railProfit
         };
 
-        const response = await fetch(cleanUrl + '?action=getCombPerevozki', {
+        const response = await fetch(buildApiUrl('getCombPerevozki'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams(payload)
@@ -1485,7 +1622,7 @@ const exportToExcel = async (type) => {
                 
                 const action = actionMap[currentUploadType.value];
                 
-                const response = await fetch(`${cleanUrl}?action=${encodeURIComponent(action)}`, {
+                const response = await fetch(buildApiUrl(action), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

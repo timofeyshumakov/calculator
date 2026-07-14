@@ -72,25 +72,80 @@ class TransportationCalculatorController
         'PROPERTY_190' => 'REMARK',
     ];
 
+    private const TRANSPORT_CACHE_TTL = 21600; // 6 часов
+    private const TRANSPORT_PAGE_SIZE = 50;
+
     /**
      * Экшен index: отрисовывает форму расчета.
+     * Данные списков подгружаются асинхронно через getTransportData.
      */
     public function index()
     {
-        // данные жд перевозок
-        $zhdPerevozki  = self::fetchTransportData(self::IBLOCK_RAIL_TRANSPORTATION, self::ZHD_TRANSPORT_MAP);
-        // данные морских перевозок
-        $seaPerevozki  = self::fetchTransportData(self::IBLOCK_SEA_TRANSPORTATION, self::SEA_TRANSPORT_MAP);
-        // данные комбинированных перевозок
-        $combPerevozki = self::fetchTransportData(self::IBLOCK_COMBINED_TRANSPORTATION, self::COMB_TRANSPORT_MAP);
+        header('Content-Type: text/html; charset=utf-8');
 
-        // Подключаем файл с формой
+        $seaKey = 'transport_' . self::IBLOCK_SEA_TRANSPORTATION;
+        $zhdKey = 'transport_' . self::IBLOCK_RAIL_TRANSPORTATION;
+        $combKey = 'transport_' . self::IBLOCK_COMBINED_TRANSPORTATION;
+
+        // Stale-while-revalidate: отдаём даже протухший кэш, чтобы UI не блокировался
+        $seaPerevozki = self::readTransportCache($seaKey, true) ?? [];
+        $zhdPerevozki = self::readTransportCache($zhdKey, true) ?? [];
+        $combPerevozki = self::readTransportCache($combKey, true) ?? [];
+
+        $controllerUrl = $_SERVER['SCRIPT_NAME'] ?? 'Controller.php';
+        $transportFromCache = $seaPerevozki !== [] || $zhdPerevozki !== [] || $combPerevozki !== [];
+
+        $reloadTypes = [];
+        if (!self::isTransportCacheFresh($seaKey)) {
+            $reloadTypes[] = 'sea';
+        }
+        if (!self::isTransportCacheFresh($zhdKey)) {
+            $reloadTypes[] = 'rail';
+        }
+        if (!self::isTransportCacheFresh($combKey)) {
+            $reloadTypes[] = 'comb';
+        }
+        $needsAsyncTransportLoad = $reloadTypes !== [];
+
         $formFile = __DIR__ . '/Forms.php';
         if (file_exists($formFile)) {
             include $formFile;
         } else {
             header('HTTP/1.0 500 Internal Server Error');
             echo 'Ошибка: файл Forms.php не найден.';
+        }
+    }
+
+    /**
+     * Возвращает все справочники перевозок для клиентской части.
+     */
+    public function getTransportData()
+    {
+        header('Content-Type: application/json; charset=utf-8');
+
+        try {
+            set_time_limit(300);
+
+            $type = $_GET['type'] ?? 'all';
+            $payload = ['success' => true];
+
+            if ($type === 'all' || $type === 'sea') {
+                $payload['seaPerevozki'] = self::fetchTransportData(self::IBLOCK_SEA_TRANSPORTATION, self::SEA_TRANSPORT_MAP);
+            }
+            if ($type === 'all' || $type === 'rail') {
+                $payload['zhdPerevozki'] = self::fetchTransportData(self::IBLOCK_RAIL_TRANSPORTATION, self::ZHD_TRANSPORT_MAP);
+            }
+            if ($type === 'all' || $type === 'comb') {
+                $payload['combPerevozki'] = self::fetchTransportData(self::IBLOCK_COMBINED_TRANSPORTATION, self::COMB_TRANSPORT_MAP);
+            }
+
+            echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            file_put_contents(__DIR__ . '/error.log', date('c') . " (getTransportData) " . $e->getMessage() . "\n", FILE_APPEND | LOCK_EX);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Не удалось загрузить справочники перевозок',
+            ], JSON_UNESCAPED_UNICODE);
         }
     }
 
@@ -1674,6 +1729,9 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                     $errors[] = ['row' => $idx, 'error' => $e->getMessage()];
                 }
             }
+            if ($added > 0) {
+                self::clearTransportCache(self::IBLOCK_RAIL_TRANSPORTATION);
+            }
             http_response_code($errors ? 207 : 200);
             echo json_encode(
                 ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка ЖД завершена'],
@@ -1803,6 +1861,10 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                 }
             }
 
+            if ($added > 0) {
+                self::clearTransportCache(self::IBLOCK_SEA_TRANSPORTATION);
+            }
+
             http_response_code($errors ? 207 : 200);
             echo json_encode(
                 ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка морских маршрутов завершена'],
@@ -1918,6 +1980,10 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                 }
             }
 
+            if ($added > 0) {
+                self::clearTransportCache(self::IBLOCK_COMBINED_TRANSPORTATION);
+            }
+
             // Если были ошибки по строкам — вернём 207 Multi-Status, иначе 200
             if ($errors) {
                 http_response_code(207);
@@ -2000,6 +2066,10 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                 }
             }
 
+            if ($added > 0) {
+                self::clearTransportCache(self::IBLOCK_RAIL_TRANSPORTATION);
+            }
+
             http_response_code($errors ? 207 : 200);
             echo json_encode(
                 ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка ЖД завершена'],
@@ -2075,6 +2145,10 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                 }
             }
 
+            if ($added > 0) {
+                self::clearTransportCache(self::IBLOCK_SEA_TRANSPORTATION);
+            }
+
             http_response_code($errors ? 207 : 200);
             echo json_encode(
                 ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка морских маршрутов завершена'],
@@ -2142,6 +2216,10 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
                 }
             }
 
+            if ($added > 0) {
+                self::clearTransportCache(self::IBLOCK_COMBINED_TRANSPORTATION);
+            }
+
             http_response_code($errors ? 207 : 200);
             echo json_encode(
                 ['result' => $errors === [], 'added' => $added, 'errors' => $errors, 'message' => 'Загрузка комбинированных маршрутов завершена'],
@@ -2165,61 +2243,283 @@ private function getCombinedRemark($seaValue, $combPerevozki, $railStartStation)
      * @return array ИТОГ
      */
     private static function fetchTransportData(int $iblockId, array $map, $filter = []): array
-{
-    $allElements = [];
-    $pageSize = 50;
-    $page = 0;
-    
-    do {
-        $response = CRest::call('lists.element.get', [
+    {
+        if (!empty($filter)) {
+            return self::mapTransportElements(
+                self::fetchTransportElements($iblockId, $filter, array_keys($map)),
+                $map
+            );
+        }
+
+        $cacheKey = 'transport_' . $iblockId;
+        $cached = self::readTransportCache($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $result = self::mapTransportElements(
+            self::fetchTransportElements($iblockId, [], array_keys($map)),
+            $map
+        );
+        self::writeTransportCache($cacheKey, $result);
+
+        return $result;
+    }
+
+    private static function fetchTransportElements(int $iblockId, array $filter, array $selectKeys): array
+    {
+        if ($filter !== []) {
+            return self::fetchTransportElementsSequential($iblockId, $filter, $selectKeys);
+        }
+
+        $pageSize = self::TRANSPORT_PAGE_SIZE;
+        $select = array_values(array_unique(array_merge(['ID', 'NAME'], $selectKeys)));
+
+        $first = self::callListsElementGet($iblockId, $filter, $select, 0);
+        if (!isset($first['result']) || !is_array($first['result'])) {
+            self::logTransportFetchError(0, $first);
+            return [];
+        }
+
+        $allElements = $first['result'];
+        $total = (int)($first['total'] ?? count($allElements));
+        if ($total <= $pageSize) {
+            return $allElements;
+        }
+
+        // Ограничиваем объём, чтобы не зависнуть на ошибке total
+        $maxTotal = 5000;
+        $effectiveTotal = min($total, $maxTotal);
+
+        $starts = [];
+        for ($start = $pageSize; $start < $effectiveTotal; $start += $pageSize) {
+            $starts[] = $start;
+        }
+
+        $chunks = array_chunk($starts, 50);
+        foreach ($chunks as $chunkIndex => $chunk) {
+            $batch = [];
+            foreach ($chunk as $start) {
+                $batch['p' . $start] = [
+                    'method' => 'lists.element.get',
+                    'params' => [
+                        'IBLOCK_TYPE_ID' => 'lists',
+                        'IBLOCK_ID' => $iblockId,
+                        'SELECT' => $select,
+                        'start' => $start,
+                    ],
+                ];
+            }
+
+            $response = self::callListsBatch($batch);
+            foreach ($response['result']['result'] ?? [] as $pageResult) {
+                if (is_array($pageResult) && $pageResult !== []) {
+                    $allElements = array_merge($allElements, $pageResult);
+                }
+            }
+
+            if ($chunkIndex < count($chunks) - 1) {
+                usleep(550000);
+            }
+        }
+
+        return $allElements;
+    }
+
+    private static function fetchTransportElementsSequential(int $iblockId, array $filter, array $selectKeys): array
+    {
+        $pageSize = self::TRANSPORT_PAGE_SIZE;
+        $select = array_values(array_unique(array_merge(['ID', 'NAME'], $selectKeys)));
+        $allElements = [];
+        $start = 0;
+
+        while (true) {
+            $response = self::callListsElementGet($iblockId, $filter, $select, $start);
+            if (!isset($response['result']) || !is_array($response['result'])) {
+                self::logTransportFetchError($start, $response);
+                break;
+            }
+
+            $elements = $response['result'];
+            if ($elements === []) {
+                break;
+            }
+
+            $allElements = array_merge($allElements, $elements);
+
+            if (!isset($response['next']) || count($elements) < $pageSize) {
+                break;
+            }
+
+            $start = (int)$response['next'];
+            usleep(550000);
+        }
+
+        return $allElements;
+    }
+
+    private static function logTransportFetchError(int $start, array $response): void
+    {
+        if (empty($response['error'])) {
+            return;
+        }
+
+        file_put_contents(
+            __DIR__ . '/fetch_transport_data_error.log',
+            'Error on start ' . $start . ': ' . json_encode($response, JSON_UNESCAPED_UNICODE) . PHP_EOL,
+            FILE_APPEND | LOCK_EX
+        );
+    }
+
+    private static function callListsElementGet(int $iblockId, array $filter, array $select, int $start): array
+    {
+        $params = [
             'IBLOCK_TYPE_ID' => 'lists',
             'IBLOCK_ID' => $iblockId,
-            'FILTER' => $filter,
-            'start' => $pageSize * $page,
-        ]);
+            'SELECT' => $select,
+            'start' => $start,
+        ];
 
-        if (isset($response['result']) && is_array($response['result'])) {
-            $elements = $response['result'];
-            
-            // Добавляем элементы в общий массив
-            $allElements = array_merge($allElements, $elements);
-            
-            // Проверяем, нужно ли делать следующий запрос
-            if (count($elements) < $pageSize) {
-                break; // Получены все элементы с этой страницы
-            }
-            
-            $page++;
-            
-        } else {
-            // Логируем ошибку
-            file_put_contents(__DIR__ . '/fetch_transport_data_error.log', 
-                "Error on page {$page}: " . json_encode($response, JSON_UNESCAPED_UNICODE) . PHP_EOL, 
-                FILE_APPEND | LOCK_EX);
-            break;
+        if ($filter !== []) {
+            $params['FILTER'] = $filter;
         }
-        
-    } while (true);
-    
-    // Преобразуем все полученные элементы согласно карте
-    $result = array_map(function(array $item) use ($map) {
-        $row = [];
-        foreach ($map as $oldKey => $newKey) {
-            if (!array_key_exists($oldKey, $item)) {
-                continue;
-            }
-            $value = $item[$oldKey];
-            // если значение — массив, берем первый элемент
-            if (is_array($value)) {
-                $value = reset($value);
-            }
-            $row[$newKey] = $value;
-        }
-        return $row;
-    }, $allElements);
 
-    return $result;
-}
+        $maxRetries = 5;
+        $response = [];
+
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            $response = CRest::call('lists.element.get', $params);
+            $error = $response['error'] ?? '';
+
+            if ($error === '' || !in_array($error, ['QUERY_LIMIT_EXCEEDED', 'INTERNAL_SERVER_ERROR'], true)) {
+                return $response;
+            }
+
+            usleep(1000000 * ($attempt + 1));
+        }
+
+        return $response;
+    }
+
+    private static function callListsBatch(array $batch): array
+    {
+        $maxRetries = 5;
+        $response = [];
+
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            $response = CRest::callBatch($batch);
+            $error = $response['error'] ?? '';
+
+            if ($error === '' || !in_array($error, ['QUERY_LIMIT_EXCEEDED', 'INTERNAL_SERVER_ERROR'], true)) {
+                return $response;
+            }
+
+            usleep(1000000 * ($attempt + 1));
+        }
+
+        return $response;
+    }
+
+    private static function mapTransportElements(array $allElements, array $map): array
+    {
+        return array_map(static function (array $item) use ($map) {
+            $row = [];
+            foreach ($map as $oldKey => $newKey) {
+                if (!array_key_exists($oldKey, $item)) {
+                    continue;
+                }
+                $row[$newKey] = self::normalizeBitrixValue($item[$oldKey]);
+            }
+            return $row;
+        }, $allElements);
+    }
+
+    private static function normalizeBitrixValue($value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        if (is_array($value)) {
+            if (array_key_exists('VALUE', $value)) {
+                return self::normalizeBitrixValue($value['VALUE']);
+            }
+            if (array_key_exists('value', $value)) {
+                return self::normalizeBitrixValue($value['value']);
+            }
+
+            $first = reset($value);
+            return $first === false ? '' : self::normalizeBitrixValue($first);
+        }
+
+        if (is_object($value)) {
+            return self::normalizeBitrixValue((array)$value);
+        }
+
+        return is_scalar($value) ? trim((string)$value) : '';
+    }
+
+    private static function getTransportCacheDir(): string
+    {
+        $dir = __DIR__ . '/cache';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        return $dir;
+    }
+
+    private static function readTransportCache(string $cacheKey, bool $allowStale = false): ?array
+    {
+        $cacheFile = self::getTransportCacheDir() . '/' . $cacheKey . '.json';
+        if (!file_exists($cacheFile)) {
+            return null;
+        }
+
+        $isExpired = (time() - filemtime($cacheFile)) >= self::TRANSPORT_CACHE_TTL;
+        if ($isExpired && !$allowStale) {
+            return null;
+        }
+
+        $cached = json_decode((string)file_get_contents($cacheFile), true);
+        return is_array($cached) ? $cached : null;
+    }
+
+    private static function isTransportCacheFresh(string $cacheKey): bool
+    {
+        $cacheFile = self::getTransportCacheDir() . '/' . $cacheKey . '.json';
+        if (!file_exists($cacheFile)) {
+            return false;
+        }
+
+        return (time() - filemtime($cacheFile)) < self::TRANSPORT_CACHE_TTL;
+    }
+
+    private static function writeTransportCache(string $cacheKey, array $data): void
+    {
+        $cacheFile = self::getTransportCacheDir() . '/' . $cacheKey . '.json';
+        file_put_contents($cacheFile, json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
+
+    private static function clearTransportCache(?int $iblockId = null): void
+    {
+        $dir = self::getTransportCacheDir();
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        if ($iblockId !== null) {
+            $cacheFile = $dir . '/transport_' . $iblockId . '.json';
+            if (file_exists($cacheFile)) {
+                unlink($cacheFile);
+            }
+            return;
+        }
+
+        foreach (glob($dir . '/transport_*.json') ?: [] as $cacheFile) {
+            unlink($cacheFile);
+        }
+    }
 
     /**
      * Экшен install: регистрирует локальное приложение в Битрикс24,
